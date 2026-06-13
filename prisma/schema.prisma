@@ -1,0 +1,191 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model User {
+  id    Int     @id @default(autoincrement())
+  name  String?
+  mobileNumber String  @unique
+  email String?  @unique
+  role  Role @default(user)
+  city  String?
+  refreshTokens Json? // Store refresh tokens as a JSON array
+  orders Order[] 
+  subscriptions Subscription[]
+  trips Trip[]
+  bookings Booking[] // For emergency, later need to delete it
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Service {
+  id    Int     @id @default(autoincrement())
+  title  String
+  description String?
+  thumbnailUrl String?
+  isActive Boolean @default(true)
+  packages     Package[] @relation("PackageServices")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Package {
+  id    Int     @id @default(autoincrement())
+  name  String
+  regularPrice Float
+  discountedPrice Float
+  description String?
+  tags String?
+  vehicleType String?
+  vehicleModel Json? // Store as JSON to allow for multiple models
+  bodyguardType String?
+  trips Int?
+  validity Int? // Validity in months
+  thumbnailUrl String?
+  isActive Boolean @default(true)
+  services      Service[] @relation("PackageServices")
+  orders Order[] 
+  subscriptions Subscription[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Coupon {
+  id    Int     @id @default(autoincrement())
+  code  String  @unique
+  discountType DiscountType
+  discountValue Float
+  usageLimit Int?
+  usedCount Int @default(0)
+  isActive Boolean @default(true)
+  validUntil DateTime?
+  packageId Json? // Store applicable package IDs as JSON array
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id    Int     @id @default(autoincrement())
+  userId Int
+  packageId Int
+  amount Float
+  discountAmount Float
+  finalAmount Float
+  couponCode String?
+  couponId Int?
+  status String
+  paymentId String?
+  cashfreeOrderId String? @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+  package Package @relation(fields: [packageId], references: [id])
+}
+
+model Subscription {
+  id    Int     @id @default(autoincrement())
+  userId Int
+  packageId Int
+  startDate DateTime
+  endDate DateTime
+  status SubscriptionStatus @default(pending)
+  paymentId String?
+  tripsTotal Int?
+  tripsUsed Int? @default(0)
+  verifiedBy Int? // Store admin ID who verified
+  verifiedAt DateTime?
+  adminRemarks String?
+  vehicleType String?
+  bodyguardType String?
+  services Json? // Store subscribed services as JSON array
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+  package Package @relation(fields: [packageId], references: [id])
+  trips Trip[]
+}
+
+model Trip {
+  id    Int     @id @default(autoincrement())
+  userId Int
+  subscriptionId Int
+  assignmentId String?
+  pickupLocation String
+  dropLocation String
+  tripDate DateTime
+  tripType String
+  status tripStatus @default(requested)
+  confirmedBy Int? // Store admin ID who confirmed the trip
+  cancelledBy Int? // Store admin ID who cancelled the trip
+  cancellationReason String?
+  createdBy Int? // Store admin ID who created the trip
+  services  Json? // Store trip services as JSON array
+  user User @relation(fields: [userId], references: [id])
+  subscription Subscription @relation(fields: [subscriptionId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// its for emergency , later need to delete it 
+model Booking {
+  id    Int     @id @default(autoincrement())
+  userId Int
+  packageId String // frontend id for now
+  packageName String 
+  cashfreeOrderId String? @unique
+  status BookingStatus @default(initiated)
+  purchaseDate DateTime @default(now())
+  validity String? 
+  purchaseAmount Float?
+  currency String?
+  serviceCity String?
+  user User @relation(fields: [userId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum Role {
+  user
+  admin
+  ops
+}
+
+enum tripStatus {
+  requested
+  confirmed
+  completed
+  cancelled
+}
+
+enum DiscountType {
+  percentage
+  fixed
+}
+
+enum SubscriptionStatus {
+  pending
+  active
+  expired
+  cancelled
+}
+
+enum BookingStatus {
+  initiated
+  pending
+  active
+  cancelled
+  completed
+  failed
+}

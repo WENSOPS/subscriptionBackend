@@ -1,0 +1,19 @@
+import { Router } from 'express';
+import * as packageController from './package.controller.js';
+import * as packageValidation from './package.validation.js';
+import authMiddleware from '../../middleware/auth.middlewares.js';
+
+const router = Router();
+
+// Create a new package
+router.post('/', authMiddleware(['admin']), packageValidation.createPackageValidationRules(), packageController.createPackage);
+// Get all packages
+router.get('/', packageController.getAllPackages);
+// Get a package by ID
+router.get('/:id', packageValidation.idValidationRules(), packageController.getPackageById);
+// Update a package by ID
+router.put('/:id', authMiddleware(['admin']), packageValidation.idValidationRules(), packageController.updatePackage);
+// Delete a package by ID
+router.delete('/:id', authMiddleware(['admin']), packageValidation.idValidationRules(), packageController.deletePackage);
+
+export default router;
