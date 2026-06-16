@@ -143,17 +143,12 @@ export const verifyOtp = async (req, res) => {
     // 3. Delete OTP from Redis BEFORE DB transaction (prevent reuse)
     await deleteKey(`otp:${mobileNumber}`);
 
-    // 4. Upsert user — short transaction, DB only (no async work inside)
-    const user = await prisma.$transaction(
-      async (tx) => {
-        return tx.user.upsert({
-          where: { mobileNumber },
-          update: {},
-          create: { mobileNumber, role: "user" },
-        });
-      },
-      { timeout: 8000, isolationLevel: "ReadCommitted" },
-    );
+    // 4. Upsert user — atomic by itself, no transaction needed
+    const user = await prisma.user.upsert({
+      where: { mobileNumber },
+      update: {},
+      create: { mobileNumber, role: "user" },
+    });
 
     // 5. Generate tokens OUTSIDE transaction (no DB connection held)
     const { accessToken, refreshToken } =
