@@ -151,6 +151,8 @@ model Booking {
   purchaseAmount Float?
   currency String?
   serviceCity String?
+  invoiceNumber String? @unique
+  invoiceKey String? 
   user User @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

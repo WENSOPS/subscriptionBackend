@@ -11,6 +11,6 @@ router.put('/status/:id', authMiddleware(['admin','ops']), bookingValidation.upd
 router.get('/my', authMiddleware(['user','admin','ops']), bookingController.getMyBookings);
 //webhook update api protect this endpoint with a secret key or signature verification
 router.post('/webhook', signatureVerificationMiddleware, bookingController.webhookUpdate);
-
+router.get('/invoice/:id', authMiddleware(['admin','ops','user']), bookingController.generateInvoice);
 
 export default router;
