@@ -5,7 +5,7 @@
 
 */
 -- AlterTable
-ALTER TABLE `booking` ADD COLUMN `invoiceNumber` VARCHAR(191) NULL;
+ALTER TABLE `Booking` ADD COLUMN `invoiceNumber` VARCHAR(191) NULL;
 
 -- CreateIndex
 CREATE UNIQUE INDEX `Booking_invoiceNumber_key` ON `Booking`(`invoiceNumber`);

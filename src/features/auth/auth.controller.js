@@ -143,67 +143,55 @@ export const verifyOtp = async (req, res) => {
     // 3. Delete OTP from Redis BEFORE DB transaction (prevent reuse)
     await deleteKey(`otp:${mobileNumber}`);
 
-    // 4. Generate tokens BEFORE transaction (keeps transaction short)
-    const tempUser = { id: null, mobileNumber, role: "user" };
-
-    // 5. Wrap DB operations in a single transaction
-    const updatedUser = await prisma.$transaction(
+    // 4. Upsert user — short transaction, DB only (no async work inside)
+    const user = await prisma.$transaction(
       async (tx) => {
-        // upsert = find OR create in one atomic operation (no race condition)
-        const user = await tx.user.upsert({
+        return tx.user.upsert({
           where: { mobileNumber },
-          update: {}, // if exists, do nothing yet
-          create: {
-            mobileNumber,
-            role: "user",
-          },
+          update: {},
+          create: { mobileNumber, role: "user" },
         });
-
-        // Now generate tokens with real user id
-        const { accessToken, refreshToken } =
-          await generateAccessAndRefreshTokens(user);
-
-        const existingTokens = Array.isArray(user.refreshTokens)
-          ? user.refreshTokens
-          : [];
-
-        const updated = await tx.user.update({
-          where: { id: user.id },
-          data: {
-            refreshTokens: [
-              ...existingTokens,
-              {
-                token: refreshToken,
-                expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-              },
-            ],
-          },
-        });
-
-        return { user: updated, accessToken, refreshToken };
       },
-      {
-        timeout: 8000, // 8 second max
-        isolationLevel: "ReadCommitted", // less locking than default
-      },
+      { timeout: 8000, isolationLevel: "ReadCommitted" },
     );
 
-    // 6. Set cookie and respond
-    res.cookie("refreshToken", updatedUser.refreshToken, {
+    // 5. Generate tokens OUTSIDE transaction (no DB connection held)
+    const { accessToken, refreshToken } =
+      await generateAccessAndRefreshTokens(user);
+
+    // 6. Update refresh tokens — simple update, no transaction needed
+    const existingTokens = Array.isArray(user.refreshTokens)
+      ? user.refreshTokens
+      : [];
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        refreshTokens: [
+          ...existingTokens,
+          {
+            token: refreshToken,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        ],
+      },
+    });
+
+    // 7. Set cookie and respond
+    res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
-    updatedUser.user.refreshTokens = undefined;
+    updatedUser.refreshTokens = undefined;
 
     return ok(
       res,
       {
-        accessToken: updatedUser.accessToken,
-        refreshToken: updatedUser.refreshToken,
-        user: updatedUser.user,
+        accessToken,
+        refreshToken,
+        user: updatedUser,
       },
       "OTP verified successfully",
     );

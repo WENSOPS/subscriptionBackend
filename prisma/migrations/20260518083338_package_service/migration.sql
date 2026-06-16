@@ -8,10 +8,10 @@
 
 */
 -- DropIndex
-DROP INDEX `User_email_key` ON `user`;
+DROP INDEX `User_email_key` ON `User`;
 
 -- AlterTable
-ALTER TABLE `user` DROP COLUMN `email`,
+ALTER TABLE `User` DROP COLUMN `email`,
     ADD COLUMN `city` VARCHAR(191) NULL,
     ADD COLUMN `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
     ADD COLUMN `mobileNumber` VARCHAR(191) NOT NULL,

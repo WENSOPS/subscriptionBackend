@@ -5,13 +5,13 @@
 
 */
 -- DropForeignKey
-ALTER TABLE `trips` DROP FOREIGN KEY `Trips_subscriptionId_fkey`;
+ALTER TABLE `Trips` DROP FOREIGN KEY `Trips_subscriptionId_fkey`;
 
 -- DropForeignKey
-ALTER TABLE `trips` DROP FOREIGN KEY `Trips_userId_fkey`;
+ALTER TABLE `Trips` DROP FOREIGN KEY `Trips_userId_fkey`;
 
 -- DropTable
-DROP TABLE `trips`;
+DROP TABLE `Trips`;
 
 -- CreateTable
 CREATE TABLE `Trip` (

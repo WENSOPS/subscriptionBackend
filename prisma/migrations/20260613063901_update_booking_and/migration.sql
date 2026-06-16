@@ -5,12 +5,12 @@
 
 */
 -- AlterTable
-ALTER TABLE `booking` ADD COLUMN `currency` VARCHAR(191) NULL,
+ALTER TABLE `Booking` ADD COLUMN `currency` VARCHAR(191) NULL,
     ADD COLUMN `serviceCity` VARCHAR(191) NULL,
     MODIFY `purchaseAmount` DOUBLE NULL;
 
 -- AlterTable
-ALTER TABLE `user` ADD COLUMN `email` VARCHAR(191) NULL;
+ALTER TABLE `User` ADD COLUMN `email` VARCHAR(191) NULL;
 
 -- CreateIndex
 CREATE UNIQUE INDEX `User_email_key` ON `User`(`email`);

@@ -5,5 +5,5 @@
 
 */
 -- AlterTable
-ALTER TABLE `trip` ADD COLUMN `confirmedBy` INTEGER NULL,
+ALTER TABLE `Trip` ADD COLUMN `confirmedBy` INTEGER NULL,
     MODIFY `cancelledBy` INTEGER NULL;

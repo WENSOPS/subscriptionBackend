@@ -7,6 +7,6 @@
 
 */
 -- AlterTable
-ALTER TABLE `package` DROP COLUMN `price`,
+ALTER TABLE `Package` DROP COLUMN `price`,
     ADD COLUMN `discountedPrice` DOUBLE NOT NULL,
     ADD COLUMN `regularPrice` DOUBLE NOT NULL;

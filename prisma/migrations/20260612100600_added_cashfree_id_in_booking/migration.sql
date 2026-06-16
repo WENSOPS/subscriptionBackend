@@ -5,7 +5,7 @@
 
 */
 -- AlterTable
-ALTER TABLE `booking` ADD COLUMN `cashfreeOrderId` VARCHAR(191) NULL;
+ALTER TABLE `Booking` ADD COLUMN `cashfreeOrderId` VARCHAR(191) NULL;
 
 -- CreateIndex
 CREATE UNIQUE INDEX `Booking_cashfreeOrderId_key` ON `Booking`(`cashfreeOrderId`);

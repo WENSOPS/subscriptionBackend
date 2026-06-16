@@ -6,6 +6,6 @@
 
 */
 -- AlterTable
-ALTER TABLE `subscription` DROP COLUMN `carType`,
+ALTER TABLE `Subscription` DROP COLUMN `carType`,
     ADD COLUMN `vehicleType` VARCHAR(191) NULL,
     MODIFY `verifiedBy` INTEGER NULL;

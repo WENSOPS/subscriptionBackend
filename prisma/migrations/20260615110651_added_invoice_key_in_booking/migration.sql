@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `booking` ADD COLUMN `invoiceKey` VARCHAR(191) NULL;
+ALTER TABLE `Booking` ADD COLUMN `invoiceKey` VARCHAR(191) NULL;

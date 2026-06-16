@@ -5,5 +5,5 @@
 
 */
 -- AlterTable
-ALTER TABLE `booking` DROP COLUMN `expiryDate`,
+ALTER TABLE `Booking` DROP COLUMN `expiryDate`,
     ADD COLUMN `validity` VARCHAR(191) NULL;

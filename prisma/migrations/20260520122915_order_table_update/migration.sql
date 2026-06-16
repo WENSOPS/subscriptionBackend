@@ -1,2 +1,2 @@
 -- AlterTable
-ALTER TABLE `order` ADD COLUMN `cashfreeOrderId` VARCHAR(191) NULL;
+ALTER TABLE `Order` ADD COLUMN `cashfreeOrderId` VARCHAR(191) NULL;
