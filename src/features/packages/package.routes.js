@@ -8,7 +8,9 @@ const router = Router();
 // Create a new package
 router.post('/', authMiddleware(['admin']), packageValidation.createPackageValidationRules(), packageController.createPackage);
 // Get all packages
-router.get('/', packageController.getAllPackages);
+router.get('/', authMiddleware(['admin']), packageController.getAllPackages);
+//TODO: Create a route fir getting package for users 
+router.get('/user', packageController.getAllPackagesForUsers);
 // Get a package by ID
 router.get('/:id', packageValidation.idValidationRules(), packageController.getPackageById);
 // Update a package by ID

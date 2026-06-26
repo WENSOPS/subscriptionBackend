@@ -30,18 +30,18 @@ model User {
 
 model Service {
   id    Int     @id @default(autoincrement())
-  title  String
+  title  String @unique
   description String?
-  thumbnailUrl String?
+  thumbnailUrlKey String?
   isActive Boolean @default(true)
-  packages     Package[] @relation("PackageServices")
+  packageServices PackageService[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
 model Package {
   id    Int     @id @default(autoincrement())
-  name  String
+  name  String @unique
   regularPrice Float
   discountedPrice Float
   description String?
@@ -51,13 +51,28 @@ model Package {
   bodyguardType String?
   trips Int?
   validity Int? // Validity in months
-  thumbnailUrl String?
+  thumbnailUrlKey String?
   isActive Boolean @default(true)
-  services      Service[] @relation("PackageServices")
-  orders Order[] 
+  packageServices PackageService[]
+  orders Order[]
   subscriptions Subscription[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model PackageService {
+  id    Int     @id @default(autoincrement())
+  packageId Int
+  serviceId Int
+  count Int @default(1)
+
+  package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([packageId, serviceId])
 }
 
 model Coupon {

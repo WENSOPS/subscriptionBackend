@@ -1,24 +1,25 @@
 import { prisma } from "../../lib/prisma.js";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import s3Client from "../../config/storage/s3.js";
 
 export const createService = async (req, res) => {
   try {
-    const { title, description, thumbnailUrl, isActive } = req.body;
+    const { title, description, thumbnailUrlKey, isActive } = req.body;
 
     const newService = await prisma.service.create({
       data: {
         title,
         description,
-        thumbnailUrl,
+        thumbnailUrlKey,
         isActive,
       },
     });
-    return res
-      .status(201)
-      .json({
-        success: true,
-        data: newService,
-        message: "Service created successfully",
-      });
+    return res.status(201).json({
+      success: true,
+      data: newService,
+      message: "Service created successfully",
+    });
   } catch (error) {
     console.error("Error creating service:", error);
     return res
@@ -29,14 +30,53 @@ export const createService = async (req, res) => {
 
 export const listServices = async (req, res) => {
   try {
-    const services = await prisma.service.findMany();
-    return res
-      .status(200)
-      .json({
-        success: true,
-        data: services,
-        message: "Services retrieved successfully",
-      });
+    const { page = 1, limit = 10, search } = req.query;
+    const where = {};
+    if (search) {
+      where.OR = [
+        { title: { contains: search } },
+        { description: { contains: search } },
+      ];
+    }
+
+    const [total, services] = await Promise.all([
+      prisma.service.count({ where }),
+      prisma.service.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: parseInt(limit),
+      }),
+    ]);
+
+    // Generate presigned URLs for all services (local signing — no network calls)
+    const servicesWithUrls = await Promise.all(
+      services.map(async (service) => ({
+        ...service,
+        thumbnailUrl: service.thumbnailUrlKey
+          ? await getSignedUrl(
+              s3Client,
+              new GetObjectCommand({
+                Bucket: process.env.S3_BUCKET,
+                Key: service.thumbnailUrlKey,
+              }),
+              { expiresIn: 3600 }, // 1 hour
+            )
+          : null,
+      })),
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        services: servicesWithUrls,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+        },
+      },
+      message: "Services retrieved successfully",
+    });
   } catch (error) {
     console.error("Error listing services:", error);
     return res
@@ -56,13 +96,21 @@ export const getServiceById = async (req, res) => {
         .status(404)
         .json({ success: false, message: "Service not found" });
     }
-    return res
-      .status(200)
-      .json({
-        success: true,
-        data: service,
-        message: "Service retrieved successfully",
-      });
+    const thumbnailUrl = service.thumbnailUrlKey
+      ? await getSignedUrl(
+          s3Client,
+          new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: service.thumbnailUrlKey,
+          }),
+          { expiresIn: 3600 }, // 1 hour
+        )
+      : null;
+    return res.status(200).json({
+      success: true,
+      data: { ...service, thumbnailUrl },
+      message: "Service retrieved successfully",
+    });
   } catch (error) {
     console.error("Error retrieving service:", error);
     return res
@@ -74,23 +122,21 @@ export const getServiceById = async (req, res) => {
 export const updateService = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, thumbnailUrl, isActive } = req.body;
+    const { title, description, thumbnailUrlKey, isActive } = req.body;
     const updatedService = await prisma.service.update({
       where: { id: parseInt(id) },
       data: {
         title,
         description,
-        thumbnailUrl,
+        thumbnailUrlKey,
         isActive,
       },
     });
-    return res
-      .status(200)
-      .json({
-        success: true,
-        data: updatedService,
-        message: "Service updated successfully",
-      });
+    return res.status(200).json({
+      success: true,
+      data: updatedService,
+      message: "Service updated successfully",
+    });
   } catch (error) {
     console.error("Error updating service:", error);
     return res

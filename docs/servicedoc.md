@@ -58,19 +58,19 @@ Create a new service.
 
 ### Request Body
 
-| Field          | Type    | Required | Description                        |
-|----------------|---------|----------|------------------------------------|
-| `title`        | string  | Yes      | Title of the service.              |
-| `description`  | string  | Yes      | Description of the service.        |
-| `thumbnailUrl` | string  | No       | URL of the service thumbnail image.|
-| `isActive`     | boolean | No       | Whether the service is active.     |
+| Field               | Type    | Required | Description                                |
+|---------------------|---------|----------|--------------------------------------------|
+| `title`             | string  | Yes      | Title of the service.                      |
+| `description`       | string  | Yes      | Description of the service.                |
+| `thumbnailUrlKey`   | string  | No       | S3 bucket key for the service thumbnail.   |
+| `isActive`          | boolean | No       | Whether the service is active.             |
 
 **Example:**
 ```json
 {
   "title": "Home Cleaning",
   "description": "Professional home cleaning service.",
-  "thumbnailUrl": "https://example.com/images/cleaning.jpg",
+  "thumbnailUrlKey": "services/cleaning.jpg",
   "isActive": true
 }
 ```
@@ -86,13 +86,15 @@ Create a new service.
     "id": 1,
     "title": "Home Cleaning",
     "description": "Professional home cleaning service.",
-    "thumbnailUrl": "https://example.com/images/cleaning.jpg",
+    "thumbnailUrlKey": "services/cleaning.jpg",
     "isActive": true,
     "createdAt": "2026-06-03T10:00:00.000Z",
     "updatedAt": "2026-06-03T10:00:00.000Z"
   }
 }
 ```
+
+**Note:** The response contains `thumbnailUrlKey`. To get the actual thumbnail URL (presigned S3 URL with 1-hour expiration), use the [Get Service by ID](#3-get-service-by-id) endpoint.
 
 #### Error Responses
 
@@ -123,19 +125,29 @@ Retrieve all services.
 {
   "success": true,
   "message": "Services retrieved successfully",
-  "data": [
-    {
-      "id": 1,
-      "title": "Home Cleaning",
-      "description": "Professional home cleaning service.",
-      "thumbnailUrl": "https://example.com/images/cleaning.jpg",
-      "isActive": true,
-      "createdAt": "2026-06-03T10:00:00.000Z",
-      "updatedAt": "2026-06-03T10:00:00.000Z"
+  "data": {
+    "services": [
+      {
+        "id": 1,
+        "title": "Home Cleaning",
+        "description": "Professional home cleaning service.",
+        "thumbnailUrlKey": "services/cleaning.jpg",
+        "thumbnailUrl": "https://s3-bucket.amazonaws.com/services/cleaning.jpg?X-Amz-Algorithm=...",
+        "isActive": true,
+        "createdAt": "2026-06-03T10:00:00.000Z",
+        "updatedAt": "2026-06-03T10:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 10,
+      "total": 1
     }
-  ]
+  }
 }
 ```
+
+**Note:** `thumbnailUrl` is a presigned S3 URL with 1-hour expiration. `thumbnailUrlKey` is the S3 key stored in the database.
 
 #### Error Responses
 
@@ -174,13 +186,16 @@ Retrieve a single service by its ID.
     "id": 1,
     "title": "Home Cleaning",
     "description": "Professional home cleaning service.",
-    "thumbnailUrl": "https://example.com/images/cleaning.jpg",
+    "thumbnailUrlKey": "services/cleaning.jpg",
+    "thumbnailUrl": "https://s3-bucket.amazonaws.com/services/cleaning.jpg?X-Amz-Algorithm=...",
     "isActive": true,
     "createdAt": "2026-06-03T10:00:00.000Z",
     "updatedAt": "2026-06-03T10:00:00.000Z"
   }
 }
 ```
+
+**Note:** `thumbnailUrl` is a presigned S3 URL with 1-hour expiration. Use this URL directly in your frontend.
 
 #### Error Responses
 
@@ -210,12 +225,12 @@ Update an existing service by its ID.
 
 ### Request Body
 
-| Field          | Type    | Required | Description                         |
-|----------------|---------|----------|-------------------------------------|
-| `title`        | string  | No       | Updated title of the service.       |
-| `description`  | string  | No       | Updated description.                |
-| `thumbnailUrl` | string  | No       | Updated URL of the thumbnail image. |
-| `isActive`     | boolean | No       | Updated active status.              |
+| Field               | Type    | Required | Description                          |
+|---------------------|---------|----------|--------------------------------------|
+| `title`             | string  | No       | Updated title of the service.        |
+| `description`       | string  | No       | Updated description.                 |
+| `thumbnailUrlKey`   | string  | No       | Updated S3 key for thumbnail image.  |
+| `isActive`          | boolean | No       | Updated active status.               |
 
 **Example:** `PUT /api/v1/service/1`
 ```json
@@ -236,7 +251,7 @@ Update an existing service by its ID.
     "id": 1,
     "title": "Premium Home Cleaning",
     "description": "Professional home cleaning service.",
-    "thumbnailUrl": "https://example.com/images/cleaning.jpg",
+    "thumbnailUrlKey": "services/cleaning.jpg",
     "isActive": false,
     "createdAt": "2026-06-03T10:00:00.000Z",
     "updatedAt": "2026-06-03T10:30:00.000Z"

@@ -14,6 +14,12 @@ export const createServiceValidationRules = () => {
             .notEmpty().withMessage('Service title is required'),
         body('description')
             .notEmpty().withMessage('Service description is required'),
+        body('thumbnailUrlKey')
+            .optional()
+            .isString().withMessage('Thumbnail URL key must be a string'),
+        body('isActive')
+            .optional()
+            .isBoolean().withMessage('isActive must be a boolean'),
         validate
     ];
 }

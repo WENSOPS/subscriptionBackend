@@ -1,19 +1,22 @@
 import { prisma } from "../../lib/prisma.js";
-import { ok } from "../../utils/response.js";
+import { internalError, ok } from "../../utils/response.js";
 
 
 export const createUser = async (req, res) => {
   try {
-    const { name, email } = req.body;
+    const { name, email, mobileNumber, role, city } = req.body;
     const user = await prisma.user.create({
       data: {
         name,
         email,
+        mobileNumber,
+        role,
+        city,
       },
     });
     ok(res, user, 201);
   } catch (error) {
-    res.status(500).json({ error: "Failed to create user" });
+    internalError(res, "Failed to create user");
   }
 };
 
@@ -25,8 +28,10 @@ export const getAllUsers = async (req, res) => {
     const where = search
       ? {
           OR: [
-            { name: { contains: search, mode: "insensitive" } },
-            { email: { contains: search, mode: "insensitive" } },
+            { name: { contains: search, } },
+            { email: { contains: search, } },
+            { mobileNumber: { contains: search, } },
+            { city: { contains: search, } },
           ],
         }
       : {};
