@@ -26,6 +26,7 @@ model User {
   bookings Booking[] // For emergency, later need to delete it
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@map("users") // Map to the "users" table in the database
 }
 
 model Service {
@@ -37,6 +38,7 @@ model Service {
   packageServices PackageService[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@map("services") // Map to the "services" table in the database
 }
 
 model Package {
@@ -59,6 +61,7 @@ model Package {
   subscriptions Subscription[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@map("packages") // Map to the "packages" table in the database
 }
 
 model PackageService {
@@ -74,6 +77,7 @@ model PackageService {
   updatedAt DateTime @updatedAt
 
   @@unique([packageId, serviceId])
+  @@map("package_services") // Map to the "package_services" table in the database
 }
 
 model Coupon {
@@ -88,6 +92,7 @@ model Coupon {
   packages Package[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@map("coupons") // Map to the "coupons" table in the database
 }
 
 model Order {
@@ -107,6 +112,7 @@ model Order {
 
   user User @relation(fields: [userId], references: [id])
   package Package @relation(fields: [packageId], references: [id])
+  @@map("orders") // Map to the "orders" table in the database
 }
 
 model Subscription {
@@ -131,6 +137,7 @@ model Subscription {
   user User @relation(fields: [userId], references: [id])
   package Package @relation(fields: [packageId], references: [id])
   trips Trip[]
+  @@map("subscriptions") // Map to the "subscriptions" table in the database
 }
 
 model Trip {
@@ -152,6 +159,7 @@ model Trip {
   subscription Subscription @relation(fields: [subscriptionId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@map("trips") // Map to the "trips" table in the database
 }
 
 // its for emergency , later need to delete it 
@@ -172,6 +180,7 @@ model Booking {
   user User @relation(fields: [userId], references: [id])
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  @@map("bookings") // Map to the "bookings" table in the database
 }
 
 enum Role {
