@@ -1,14 +1,14 @@
-/*
-  Warnings:
+CREATE TABLE `PackageService` (
+    `id` INT NOT NULL AUTO_INCREMENT,
+    `packageId` INT NOT NULL,
+    `serviceId` INT NOT NULL,
+    `count` INT NOT NULL DEFAULT 1,
+    `createdAt` DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+    `updatedAt` DATETIME(3) NOT NULL,
 
-  - You are about to drop the `_packageservices` table. If the table is not empty, all the data it contains will be lost.
+    UNIQUE INDEX `PackageService_packageId_serviceId_key`(`packageId`, `serviceId`),
+    PRIMARY KEY (`id`)
+) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-*/
--- DropForeignKey
-ALTER TABLE `_packageservices` DROP FOREIGN KEY `_PackageServices_A_fkey`;
-
--- DropForeignKey
-ALTER TABLE `_packageservices` DROP FOREIGN KEY `_PackageServices_B_fkey`;
-
--- DropTable
-DROP TABLE `_packageservices`;
+ALTER TABLE `PackageService` ADD CONSTRAINT `PackageService_packageId_fkey` FOREIGN KEY (`packageId`) REFERENCES `package`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `PackageService` ADD CONSTRAINT `PackageService_serviceId_fkey` FOREIGN KEY (`serviceId`) REFERENCES `service`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
