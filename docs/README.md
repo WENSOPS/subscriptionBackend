@@ -74,6 +74,121 @@ Handle user authentication, token management, and authorization.
 
 ---
 
+### 5. [Coupon API Documentation](./coupondoc.md)
+
+**Base Path:** `/api/v1/coupon`
+
+Manage coupon creation, validation, updates, and deletion with package-wise applicability.
+
+**Key Endpoints:**
+- `GET /` - List coupons with pagination and search
+- `GET /:id` - Get single coupon with package details
+- `GET /validate` - Validate coupon and calculate discount
+- `POST /` - Create a coupon and link packages
+- `PUT /:id` - Update coupon details and package links
+- `DELETE /:id` - Delete coupon
+
+**Key Fields:**
+- `code` - Coupon code (unique)
+- `discountType` / `discountValue` - Discount definition
+- `usageLimit` / `usedCount` - Usage controls
+- `validUntil` - Expiry date
+- `packageId` - Array of applicable package IDs in create/update requests
+
+---
+
+### 6. [Payment API Documentation](./paymentdoc.md)
+
+**Base Path:** `/api/v1/payment`
+
+Handle order creation, payment verification, webhook processing, and payment listing.
+
+**Key Endpoints:**
+- `POST /create-order` - Create payment order for a package
+- `GET /verify-payment/:orderId` - Verify payment status for a Cashfree order
+- `POST /webhook` - Process Cashfree webhook events
+- `GET /` - List all payments with pagination and search
+- `GET /:id` - Get payment details by internal order ID
+
+**Key Fields:**
+- `packageId` - Package to purchase
+- `couponCode` - Optional coupon code
+- `cashfreeOrderId` - Payment gateway order identifier
+- `paymentId` - Gateway payment/session reference
+- `status` - Payment state (`PENDING`, `PAID`, `FAILED`)
+
+---
+
+### 7. [Subscription API Documentation](./subscriptiondoc.md)
+
+**Base Path:** `/api/v1/subscription`
+
+Manage subscription lifecycle including creation, listing, verification, and cancellation.
+
+**Key Endpoints:**
+- `GET /my` - Get current user's subscription
+- `POST /` - Create subscription
+- `GET /:id` - Get subscription details by ID
+- `GET /` - List subscriptions with pagination and search
+- `PUT /:id/verify` - Verify and activate a subscription
+- `PUT /:id/cancel` - Cancel a subscription
+
+**Key Fields:**
+- `userId` - Subscriber user ID
+- `packageId` - Linked package ID
+- `startDate` / `endDate` - Subscription period
+- `status` - Subscription state (`pending`, `active`, `cancelled`, `expired`)
+- `tripsTotal` / `tripsUsed` - Trip usage tracking
+
+---
+
+### 8. [User API Documentation](./userdoc.md)
+
+**Base Path:** `/api/v1/user`
+
+Manage users with create, list, detail, and update operations.
+
+**Key Endpoints:**
+- `POST /` - Create user
+- `GET /` - List users with pagination and search
+- `GET /:id` - Get user details by ID
+- `PUT /:id` - Update user
+
+**Key Fields:**
+- `name` - User name
+- `email` - User email (unique)
+- `mobileNumber` - User mobile number (unique)
+- `role` - User role (`user`, `admin`, `ops`)
+- `city` - User city
+
+---
+
+### 9. [Trip API Documentation](./tripdoc.md)
+
+**Base Path:** `/api/v1/trip`
+
+Manage trip lifecycle including request, approval, listing, update, and deletion.
+
+**Key Endpoints:**
+- `POST /request` - Request a trip
+- `POST /create` - Create and confirm trip (admin/ops)
+- `GET /mine` - Get current user's trips
+- `POST /approve/:id` - Approve trip and assign assignment ID
+- `GET /get-all` - List all trips with filters
+- `PUT /update/:id` - Update trip
+- `DELETE /delete/:id` - Delete trip
+- `GET /:id` - Get trip details by ID
+
+**Key Fields:**
+- `subscriptionId` - Linked subscription ID
+- `assignmentId` - Internal assignment identifier
+- `pickupLocation` / `dropLocation` - Trip route points
+- `tripDate` - Scheduled trip date and time
+- `tripType` - Trip category (`airport-transfer`, `8Hr/80Km`)
+- `services` - Selected service list for the trip
+
+---
+
 ## Important Notes
 
 ### Thumbnail URL Mapping

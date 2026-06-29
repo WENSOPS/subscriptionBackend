@@ -54,6 +54,7 @@ model Package {
   thumbnailUrlKey String?
   isActive Boolean @default(true)
   packageServices PackageService[]
+  coupons Coupon[]
   orders Order[]
   subscriptions Subscription[]
   createdAt DateTime @default(now())
@@ -84,7 +85,7 @@ model Coupon {
   usedCount Int @default(0)
   isActive Boolean @default(true)
   validUntil DateTime?
-  packageId Json? // Store applicable package IDs as JSON array
+  packages Package[]
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }

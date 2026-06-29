@@ -1,17 +1,28 @@
 import { prisma } from "../../lib/prisma.js";
 
+const getEndDate = (startDate, duration) => {
+  const start = new Date(startDate);
+  start.setMonth(start.getMonth() + duration);
+  return start;
+};
+
 export const createSubscription = async (
   userId,
   packageId,
   startDate,
-  endDate,
   paymentId,
+
 ) => {
   try {
     const pkg = await prisma.package.findUnique({
       where: { id: parseInt(packageId) },
       include: {
-        services: true,
+        packageServices: {
+          select: {
+            service: true,
+            count: true,
+          },
+        },
       },
     });
 
@@ -24,7 +35,7 @@ export const createSubscription = async (
         userId: parseInt(userId),
         packageId: parseInt(packageId),
         startDate: new Date(startDate),
-        endDate: new Date(endDate),
+        endDate: getEndDate(startDate, pkg.validity) || null,
         status: "pending",
         paymentId,
         tripsTotal: pkg.trips,
@@ -34,7 +45,9 @@ export const createSubscription = async (
         adminRemarks: null,
         vehicleType: pkg.vehicleType,
         bodyguardType: pkg.bodyguardType,
-        services: pkg.services, // Store subscribed services as JSON array
+        services: pkg.packageServices.map((s) => {
+          return { ...s.service, count: s.count };
+        }), // Store subscribed services as JSON array
       },
     });
     return subscription;

@@ -214,3 +214,134 @@ export const verifyPayment = async (req, res) => {
     amount: order.amount,
   });
 };
+
+export const getAllPayments = async (req, res) => {
+  const { page = 1, limit = 10, search = "" } = req.query;
+
+  try {
+    const [payments, totalCount] = await prisma.$transaction([
+      prisma.order.findMany({
+        where: {
+          OR: [
+            {
+              user: {
+                name: {
+                  contains: search,
+                },
+              },
+            },
+            {
+              package: {
+                name: {
+                  contains: search,
+                },
+                
+              },
+            },
+            {
+              OR: [
+                {
+                  cashfreeOrderId: {
+                    contains: search,
+                  },
+                },
+                {
+                  paymentId: {
+                    contains: search,
+                  },
+                },
+              ],
+            }
+          ],
+        },
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              email: true,
+            },
+          },
+          package: {
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              regularPrice: true,
+              discountedPrice: true,
+            },
+          },
+        },
+        skip: (page - 1) * limit,
+        take: parseInt(limit),
+      }),
+      prisma.order.count({
+        where: {
+          OR: [
+            {
+              user: {
+                name: {
+                  contains: search,
+                },
+              },
+            },
+            {
+              package: {
+                name: {
+                  contains: search,
+                },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+    
+    return ok(res, {
+      payments,
+      totalCount,
+      page: parseInt(page),
+      limit: parseInt(limit),
+    });
+  } catch (err) {
+    console.error("[getAllPayments] Error:", err);
+    return internalError(res, "Failed to fetch payments");
+  }
+};
+
+export const getPaymentById = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const payment = await prisma.order.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            mobileNumber: true,
+          },
+        },
+        package: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            regularPrice: true,
+            discountedPrice: true,
+          },
+        },
+      },
+    });
+    
+    if (!payment) {
+      return notFound(res, "Payment not found");
+    }
+
+    return ok(res, payment);
+  } catch (err) {
+    console.error("[getPaymentById] Error:", err);
+    return internalError(res, "Failed to fetch payment");
+  }
+};

@@ -9,6 +9,6 @@ router.post("/", authMiddleware(["admin", "ops"]), subscriptionValidation.create
 router.get("/:id", authMiddleware(["admin", "ops"]), subscriptionValidation.paramsIdValidation, subscriptionController.getSubscriptionById);
 router.get("/", authMiddleware(["admin", "ops"]), subscriptionController.getAllSubscriptions);
 router.put("/:id/verify", authMiddleware(["admin", "ops"]), subscriptionValidation.verifySubscriptionValidation, subscriptionController.verifySubscription);
-router.delete("/:id", authMiddleware(["admin", "ops"]), subscriptionValidation.paramsIdValidation, subscriptionController.cancelSubscription);
+router.put("/:id/cancel", authMiddleware(["admin", "ops"]), subscriptionValidation.cancelSubscriptionValidation, subscriptionController.cancelSubscription);
 
 export default router;

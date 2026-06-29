@@ -12,7 +12,8 @@ router.post('/approve/:id', authMiddleware(['admin', 'ops']), tripValidation.app
 router.get('/get-all', authMiddleware([ 'admin', 'ops']), tripController.getAllTrips);
 router.put('/update/:id', authMiddleware(['admin', 'ops']), tripValidation.updateTripValidation, tripController.updateTrip);
 router.delete('/delete/:id', authMiddleware(['admin', 'ops']), tripValidation.deleteTripValidation, tripController.deleteTrip);
+router.post('/cancel/:id', authMiddleware(['user', 'admin', 'ops']),  tripController.cancelTrip);
+router.post('/complete/:id', authMiddleware(['admin', 'ops']),  tripController.markCompleted);
 router.get('/:id', authMiddleware(['admin', 'ops']), tripController.getTripById);
-
 
 export default router;

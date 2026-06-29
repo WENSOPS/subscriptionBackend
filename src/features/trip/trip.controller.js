@@ -1,5 +1,9 @@
 import { prisma } from "../../lib/prisma.js";
 import {
+  checkSubscriptionAvailabilityForTrip,
+  deductSubscriptionUsageForTrip,
+} from "./trip.service.js";
+import {
   accepted,
   ok,
   created,
@@ -35,8 +39,8 @@ export const requestTrip = async (req, res) => {
         tripType,
         userId: req.user.userId,
         services: services.map((service) => ({
+          id: service.id,
           name: service.name,
-          price: service.price,
         })),
       },
     });
@@ -73,6 +77,18 @@ export const createTrip = async (req, res) => {
       services,
       userId,
     } = req.body;
+
+    const availability = await checkSubscriptionAvailabilityForTrip(
+      subscriptionId,
+      services,
+    );
+    if (!availability.ok) {
+      return unprocessable(res, availability.message, {
+        code: availability.code,
+        unavailableServices: availability.unavailableServices || [],
+      });
+    }
+
     const trip = await prisma.trip.create({
       data: {
         assignmentId,
@@ -85,11 +101,14 @@ export const createTrip = async (req, res) => {
         createdBy: req.user.userId,
         userId,
         services: services.map((service) => ({
+          id: service.id,
           name: service.name,
-          price: service.price,
         })),
       },
     });
+
+    deductSubscriptionUsageForTrip(trip); // Deduct usage immediately for admin-created trips
+
     created(res, trip);
   } catch (error) {
     console.error(error);
@@ -101,6 +120,7 @@ export const approveTrip = async (req, res) => {
   try {
     const { id } = req.params;
     const { assignmentId } = req.body;
+    
     const trip = await prisma.trip.update({
       where: { id: parseInt(id) },
       data: { status: "confirmed", confirmedBy: req.user.userId, assignmentId },
@@ -120,6 +140,38 @@ export const getTripById = async (req, res) => {
     const { id } = req.params;
     const trip = await prisma.trip.findUnique({
       where: { id: parseInt(id) },
+      select: {
+        id: true,
+        assignmentId: true,
+        subscriptionId: true,
+        pickupLocation: true,
+        dropLocation: true,
+        tripDate: true,
+        tripType: true,
+        status: true,
+        createdBy: true,
+        confirmedBy: true,
+        userId: true,
+        services: true,
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            mobileNumber: true,
+          },
+        },
+        subscription: {
+          select: {
+            id: true,
+            packageId: true,
+            status: true,
+            paymentId: true,
+            startDate: true,
+            endDate: true,
+          },
+        },
+      },
     });
     if (!trip) {
       return notFound(res, "Trip not found");
@@ -161,7 +213,6 @@ export const getAllTrips = async (req, res) => {
         where,
         skip: (page - 1) * limit,
         take: limit,
-        include: { user: true }, // ✅ include user
         orderBy: { createdAt: "desc" },
       }),
       prisma.trip.count({ where }),
@@ -203,18 +254,62 @@ export const updateTrip = async (req, res) => {
         dropLocation,
         tripDate: new Date(tripDate),
         tripType,
-        services: {
-          create: services.map((service) => ({
-            name: service.name,
-            price: service.price,
-          })),
-        },
+         services: services.map((service) => ({
+          id: service.id,
+          name: service.name,
+        })),
       },
     });
     ok(res, trip);
   } catch (error) {
     console.error(error);
     internalError(res, "Failed to update trip");
+  }
+};
+
+export const cancelTrip = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+    const trip = await prisma.trip.update({
+      where: { id: parseInt(id) },
+      data: {
+        status: "cancelled",
+        cancellationReason: reason,
+        cancelledBy: req.user?.userId,
+      },
+    });
+    ok(res, trip, "Trip cancelled successfully");
+  } catch (error) {
+    console.error(error);
+    internalError(res, "Failed to cancel trip");
+  }
+};
+
+export const markCompleted = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const trip = await prisma.trip.findUnique({
+      where: { id: parseInt(id) },
+    });
+    if (!trip) {
+      return notFound(res, "Trip not found");
+    }
+    if(trip.status === "completed") {
+      return badRequest(res, "Trip is already marked as completed");
+    }
+
+    await deductSubscriptionUsageForTrip(trip);
+
+    const updatedTrip = await prisma.trip.update({
+      where: { id: parseInt(id) },
+      data: { status: "completed" },
+    });
+
+    ok(res, updatedTrip, "Trip marked as completed");
+  } catch (error) {
+    console.error(error);
+    internalError(res, "Failed to mark trip as completed");
   }
 };
 

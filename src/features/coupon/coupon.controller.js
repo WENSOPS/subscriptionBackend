@@ -12,8 +12,37 @@ import {
 
 export const getAllCoupons = async (req, res) => {
   try {
-    const coupons = await prisma.coupon.findMany();
-    ok(res, coupons);
+    const { page = 1, limit = 10, search = "" } = req.query;
+    // const coupons = await prisma.coupon.findMany();
+    const [coupons, totalCount] = await Promise.all([
+      prisma.coupon.findMany({
+        where: {
+          code: {
+            contains: search,
+          },
+        },
+        skip: (page - 1) * limit,
+        take: parseInt(limit),
+      }),
+      prisma.coupon.count({
+        where: {
+          code: {
+            contains: search,
+          },
+        },
+      }),
+    ]);
+
+    ok(
+      res,
+      {
+        coupons,
+        total: totalCount,
+        page: parseInt(page),
+        limit: parseInt(limit),
+      },
+      "Coupons fetched successfully",
+    );
   } catch (error) {
     console.error("Error fetching coupons:", error);
     internalError(res, "Failed to fetch coupons");
@@ -36,20 +65,60 @@ export const createCoupon = async (req, res) => {
       return conflict(res, "Coupon code already exists");
     }
 
+    const packageIds = Array.isArray(packageId)
+      ? packageId.map((id) => parseInt(id)).filter((id) => !Number.isNaN(id))
+      : [];
+
     const newCoupon = await prisma.coupon.create({
       data: {
         code,
         discountType,
         discountValue,
         validUntil: new Date(expiryDate),
-        packageId: packageId ? JSON.stringify(packageId) : null,
         usageLimit: usageLimit || null,
+        packages: {
+          connect: packageIds.map((id) => ({ id })),
+        },
+      },
+      include: {
+        packages: {
+          select: {
+            id: true,
+          },
+        },
       },
     });
     created(res, newCoupon, "Coupon created successfully");
   } catch (error) {
     console.error("Error creating coupon:", error);
     internalError(res, "Failed to create coupon");
+  }
+};
+
+export const getCouponById = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const coupon = await prisma.coupon.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        packages: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            regularPrice: true,
+            discountedPrice: true,
+          },
+        },
+      },
+    });
+    if (!coupon) {
+      return notFound(res, "Coupon not found");
+    }
+    ok(res, coupon, "Coupon fetched successfully");
+  } catch (error) {
+    console.error("Error fetching coupon:", error);
+    internalError(res, "Failed to fetch coupon");
   }
 };
 
@@ -79,7 +148,14 @@ export const validateCoupon = async (req, res) => {
 
 export const updateCoupon = async (req, res) => {
   const { id } = req.params;
-  const { code, discountType, discountValue, expiryDate, usageLimit, packageId } = req.body;
+  const {
+    code,
+    discountType,
+    discountValue,
+    expiryDate,
+    usageLimit,
+    packageId,
+  } = req.body;
   try {
     const existingCoupon = await prisma.coupon.findUnique({
       where: { id: parseInt(id) },
@@ -87,15 +163,41 @@ export const updateCoupon = async (req, res) => {
     if (!existingCoupon) {
       return notFound(res, "Coupon not found");
     }
+
+    const updateData = {
+      code,
+      discountType,
+      discountValue,
+      usageLimit: usageLimit || null,
+    };
+
+    if (expiryDate) {
+      updateData.validUntil = new Date(expiryDate);
+    }
+
+    if (Array.isArray(packageId)) {
+      const packageIds = packageId
+        .map((value) => parseInt(value))
+        .filter((value) => !Number.isNaN(value));
+
+      updateData.packages = {
+        set: packageIds.map((value) => ({ id: value })),
+      };
+    }
+
     const updatedCoupon = await prisma.coupon.update({
       where: { id: parseInt(id) },
-      data: {
-        code,
-        discountType,
-        discountValue,
-        validUntil: new Date(expiryDate),
-        packageId: packageId ? JSON.stringify(packageId) : null,
-        usageLimit: usageLimit || null,
+      data: updateData,
+      include: {
+        packages: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            regularPrice: true,
+            discountedPrice: true,
+          },
+        },
       },
     });
     ok(res, updatedCoupon, "Coupon updated successfully");

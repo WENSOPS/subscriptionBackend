@@ -2,8 +2,17 @@ import { prisma } from "../lib/prisma.js";
 
 export const calculateDiscount = async (packageId, couponCode) => {
   try {
+    const parsedPackageId = parseInt(packageId);
+
     const coupon = await prisma.coupon.findUnique({
       where: { code: couponCode },
+      include: {
+        packages: {
+          select: {
+            id: true,
+          },
+        },
+      },
     });
     if (!coupon) {
       throw new Error("Invalid coupon code");
@@ -17,16 +26,16 @@ export const calculateDiscount = async (packageId, couponCode) => {
       }
     }
 
-    if (coupon.packageId) {
-      const applicablePackages = JSON.parse(coupon.packageId);
-      if (!applicablePackages.includes(parseInt(packageId))) {
+    if (coupon.packages.length > 0) {
+      const applicablePackageIds = coupon.packages.map((item) => item.id);
+      if (!applicablePackageIds.includes(parsedPackageId)) {
         throw new Error("Coupon not applicable for this package");
       }
     }
 
     // fetch package price and calculate discount
     const packageData = await prisma.package.findUnique({
-      where: { id: parseInt(packageId) },
+      where: { id: parsedPackageId },
     });
     if (!packageData) {
       throw new Error("Package not found");

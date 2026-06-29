@@ -33,3 +33,10 @@ export const verifyPaymentValidation = [
       .isString(),
     validate
 ];
+
+export const paramsIdValidation = [
+    param('id')
+      .exists()
+      .withMessage('id is required'),
+    validate
+];

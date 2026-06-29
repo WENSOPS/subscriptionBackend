@@ -47,6 +47,7 @@ export const getAllUsers = async (req, res) => {
         select: {
           id: true,
           name: true,
+          email: true,
           mobileNumber: true,
           role: true,
           city: true,
@@ -76,3 +77,52 @@ export const getAllUsers = async (req, res) => {
   }
 };
 
+export const getUserById = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = await prisma.user.findUnique({
+      where: { id: parseInt(id) },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        mobileNumber: true,
+        role: true,
+        city: true,
+        createdAt: true,
+        updatedAt: true,
+        orders: true,
+        subscriptions: true,
+        // TODO: Trip also include if needed
+      },
+    });
+    if (!user) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    ok(res, user, 200);
+  } catch (error) {
+    internalError(res, "Failed to fetch user");
+  }
+};
+
+export const updateUser = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, mobileNumber, role, city } = req.body;
+    const user = await prisma.user.update({
+      where: { id: parseInt(id) },
+      data: {
+        name,
+        email,
+        mobileNumber,
+        role,
+        city,
+      },
+    });
+
+    ok(res, user, "User updated successfully");
+  } catch (error) {
+    console.error("Error updating user:", error);
+    internalError(res, "Failed to update user");
+  }
+};

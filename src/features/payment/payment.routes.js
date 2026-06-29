@@ -8,5 +8,6 @@ const router = Router();
 router.post("/create-order", authMiddleware(['user', 'admin', 'ops']), paymentValidation.createPaymentValidation , paymentController.createOrder);
 router.get("/verify-payment/:orderId", authMiddleware(['user', 'admin', 'ops']),paymentValidation.verifyPaymentValidation, paymentController.verifyPayment);
 router.post("/webhook", paymentController.handleWebhook); // No auth, Cashfree calls this
-
+router.get("/", authMiddleware(['admin', 'ops']), paymentController.getAllPayments);
+router.get("/:id", authMiddleware(['admin', 'ops']), paymentValidation.paramsIdValidation, paymentController.getPaymentById);
 export default router;

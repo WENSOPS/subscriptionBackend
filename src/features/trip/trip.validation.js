@@ -22,10 +22,14 @@ export const createTripValidation = [
     .isIn(["airport-transfer", "8Hr/80Km"])
     .withMessage("Trip type must be either 'airport-transfer' or '8Hr/80Km'"),
   body("services").isArray().withMessage("Services must be an array"),
+  body("services.*.id")
+    .isInt()
+    .withMessage("Service ID must be an integer"),
   body("services.*.name")
     .isString()
     .withMessage("Service name must be a string"),
   body("services.*.price")
+    .optional()
     .isFloat({ gt: 0 })
     .withMessage("Service price must be a positive number"),
   validate,
@@ -41,6 +45,9 @@ export const requestTripValidation = [
     .isIn(["airport-transfer", "8Hr/80Km"])
     .withMessage("Trip type must be either 'airport-transfer' or '8Hr/80Km'"),
   body("services").isArray().withMessage("Services must be an array"),
+  body("services.*.id")
+    .isInt()
+    .withMessage("Service ID must be an integer"),
   body("services.*.name")
     .isString()
     .withMessage("Service name must be a string"),

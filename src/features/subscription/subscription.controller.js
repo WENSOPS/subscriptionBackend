@@ -43,9 +43,6 @@ export const createSubscriptionController = async (req, res) => {
     packageId,
     startDate,
     endDate,
-    amount,
-    couponCode,
-    couponId,
     paymentId,
   } = req.body;
   try {
@@ -69,7 +66,23 @@ export const getSubscriptionById = async (req, res) => {
     const subscription = await prisma.subscription.findUnique({
       where: { id: parseInt(id) },
       include: {
-        package: true,
+        package: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            regularPrice: true,
+            discountedPrice: true,
+          },
+        },
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            mobileNumber: true,
+          },
+        },
       },
     });
     if (!subscription) {
@@ -84,12 +97,87 @@ export const getSubscriptionById = async (req, res) => {
 
 export const getAllSubscriptions = async (req, res) => {
   try {
-    const subscriptions = await prisma.subscription.findMany({
-      include: {
-        package: true,
+    const { page = 1, limit = 10, search = "" } = req.query;
+    const [subscriptions, totalCount] = await Promise.all([
+      prisma.subscription.findMany({
+        select: {
+          id: true,
+          userId: true,
+          packageId: true,
+          startDate: true,
+          endDate: true,
+          status: true,
+          tripsTotal: true,
+          tripsUsed: true,
+          vehicleType: true,
+          bodyguardType: true,
+          package: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          user: {
+            select: {
+              id: true,
+              mobileNumber: true,
+            },
+          },
+        },
+        where: {
+          OR: [
+            {
+              user: {
+                name: {
+                  contains: search,
+                },
+              },
+            },
+            {
+              package: {
+                name: {
+                  contains: search,
+                },
+              },
+            },
+          ],
+        },
+        skip: (page - 1) * limit,
+        take: parseInt(limit),
+      }),
+
+      prisma.subscription.count({
+        where: {
+          OR: [
+            {
+              user: {
+                name: {
+                  contains: search,
+                },
+              },
+            },
+            {
+              package: {
+                name: {
+                  contains: search,
+                },
+              },
+            },
+          ],
+        },
+      }),
+    ]);
+
+    ok(
+      res,
+      {
+        subscriptions,
+        total: totalCount,
+        page: parseInt(page),
+        limit: parseInt(limit),
       },
-    });
-    ok(res, subscriptions);
+      "Subscriptions fetched successfully",
+    );
   } catch (error) {
     console.error("Error fetching subscriptions:", error);
     internalError(res, "Failed to fetch subscriptions");
@@ -128,6 +216,7 @@ export const verifySubscription = async (req, res) => {
 
 export const cancelSubscription = async (req, res) => {
   const { id } = req.params;
+  const { adminRemarks } = req.body;
   try {
     const subscription = await prisma.subscription.findUnique({
       where: { id: parseInt(id) },
@@ -137,7 +226,7 @@ export const cancelSubscription = async (req, res) => {
     }
     await prisma.subscription.update({
       where: { id: parseInt(id) },
-      data: { status: "cancelled" },
+      data: { status: "cancelled", adminRemarks: adminRemarks || null },
     });
     accepted(res, { message: "Subscription cancelled successfully" });
   } catch (error) {

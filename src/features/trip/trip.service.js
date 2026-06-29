@@ -1,0 +1,100 @@
+import { prisma } from "../../lib/prisma.js";
+
+export const deductSubscriptionUsageForTrip = async (trip) => {
+	if (!trip?.subscriptionId) {
+		return;
+	}
+
+	const subscription = await prisma.subscription.findUnique({
+		where: { id: trip.subscriptionId },
+	});
+
+	if (!subscription || subscription.tripsUsed >= subscription.tripsTotal) {
+		return;
+	}
+
+	const updatedServices = (subscription.services || []).map((service) => {
+		const match = (trip.services || []).find((tripService) => tripService.id === service.id);
+		return match ? { ...service, count: service.count - 1 } : service;
+	});
+
+	await prisma.subscription.update({
+		where: { id: subscription.id },
+		data: {
+			tripsUsed: subscription.tripsUsed + 1,
+			services: updatedServices,
+		},
+	});
+};
+
+export const checkSubscriptionAvailabilityForTrip = async (
+	subscriptionId,
+	selectedServices = []
+) => {
+	const parsedSubscriptionId = parseInt(subscriptionId, 10);
+	if (Number.isNaN(parsedSubscriptionId)) {
+		return {
+			ok: false,
+			message: "Invalid subscription id",
+			code: "INVALID_SUBSCRIPTION_ID",
+		};
+	}
+
+	const subscription = await prisma.subscription.findUnique({
+		where: { id: parsedSubscriptionId },
+	});
+
+	if (!subscription) {
+		return {
+			ok: false,
+			message: "Subscription not found",
+			code: "SUBSCRIPTION_NOT_FOUND",
+		};
+	}
+
+	const tripsTotal = subscription.tripsTotal ?? 0;
+	const tripsUsed = subscription.tripsUsed ?? 0;
+	if (tripsUsed >= tripsTotal) {
+		return {
+			ok: false,
+			message: "No trips available in this subscription",
+			code: "NO_TRIPS_AVAILABLE",
+		};
+	}
+
+	const subscriptionServices = Array.isArray(subscription.services)
+		? subscription.services
+		: [];
+	const requestedServices = Array.isArray(selectedServices) ? selectedServices : [];
+
+	const unavailableServices = requestedServices
+		.map((service) => ({
+			id: parseInt(service?.id, 10),
+			name: service?.name,
+		}))
+		.filter((service) => {
+			if (Number.isNaN(service.id)) {
+				return true;
+			}
+
+			const matchedService = subscriptionServices.find(
+				(subscriptionService) => parseInt(subscriptionService?.id, 10) === service.id
+			);
+
+			return !matchedService || (matchedService.count ?? 0) <= 0;
+		});
+
+	if (unavailableServices.length > 0) {
+		return {
+			ok: false,
+			message: "Some selected services are not available",
+			code: "SERVICES_NOT_AVAILABLE",
+			unavailableServices,
+		};
+	}
+
+	return {
+		ok: true,
+		subscription,
+	};
+};

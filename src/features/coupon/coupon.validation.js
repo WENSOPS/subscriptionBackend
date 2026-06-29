@@ -28,6 +28,11 @@ export const validateUpdateCoupon = [
     validate,
 ];
 
+export const validateGetCoupon = [
+    param("id").isInt().withMessage("Coupon ID must be an integer"),
+    validate,
+];
+
 export const validateCouponQuery = [
     query("code").isString().notEmpty().withMessage("Code is required"),
     query("packageId").optional().isInt().withMessage("Package ID must be an integer"),
