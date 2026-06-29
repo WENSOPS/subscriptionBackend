@@ -26,7 +26,7 @@ app.use(cookieParser());
 // );
 
 app.use(cors({
-  origin: '*',   // ✅ exact frontend origin, no trailing slash
+  origin: ['http://localhost:3000', 'http://localhost:3001', '*'],   // ✅ exact frontend origin, no trailing slash
   credentials: true,                  // ✅ allow cookies/auth headers
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
