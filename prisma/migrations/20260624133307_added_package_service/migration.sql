@@ -12,5 +12,5 @@ CREATE TABLE `PackageService` (
     PRIMARY KEY (`id`)
 ) DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-ALTER TABLE `PackageService` ADD CONSTRAINT `PackageService_packageId_fkey` FOREIGN KEY (`packageId`) REFERENCES `package`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
-ALTER TABLE `PackageService` ADD CONSTRAINT `PackageService_serviceId_fkey` FOREIGN KEY (`serviceId`) REFERENCES `service`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `PackageService` ADD CONSTRAINT `PackageService_packageId_fkey` FOREIGN KEY (`packageId`) REFERENCES `Package`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
+ALTER TABLE `PackageService` ADD CONSTRAINT `PackageService_serviceId_fkey` FOREIGN KEY (`serviceId`) REFERENCES `Service`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
