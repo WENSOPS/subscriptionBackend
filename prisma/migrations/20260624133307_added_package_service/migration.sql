@@ -1,3 +1,5 @@
+DROP TABLE IF EXISTS `PackageService`;
+
 CREATE TABLE `PackageService` (
     `id` INT NOT NULL AUTO_INCREMENT,
     `packageId` INT NOT NULL,
