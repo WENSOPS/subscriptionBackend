@@ -10,10 +10,9 @@ const validate = (req, res, next) => {
   next();
 };
 
-
 export const createPaymentValidation = [
   /* packageId, couponCode from body */
-    body("packageId")
+  body("packageId")
     .exists()
     .withMessage("packageId is required")
     .isInt({ gt: 0 })
@@ -25,18 +24,12 @@ export const createPaymentValidation = [
   validate,
 ];
 
-
 export const verifyPaymentValidation = [
-    param('orderId')
-      .exists()
-      .withMessage('orderId is required')
-      .isString(),
-    validate
+  param("orderId").exists().withMessage("orderId is required").isString(),
+  validate,
 ];
 
 export const paramsIdValidation = [
-    param('id')
-      .exists()
-      .withMessage('id is required'),
-    validate
+  param("id").exists().withMessage("id is required"),
+  validate,
 ];

@@ -52,6 +52,7 @@ model Package {
   vehicleModel Json? // Store as JSON to allow for multiple models
   bodyguardType String?
   trips Int?
+  category String?
   validity Int? // Validity in months
   thumbnailUrlKey String?
   isActive Boolean @default(true)

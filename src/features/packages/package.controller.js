@@ -228,6 +228,7 @@ export const updatePackage = async (req, res) => {
     services,
     category,
   } = req.body;
+  
   try {
     const updatedPackage = await prisma.package.update({
       where: { id: parseInt(id) },
@@ -276,6 +277,7 @@ export const updatePackage = async (req, res) => {
     if (error.code === "P2025") {
       return notFound(res, "Package not found");
     }
+    console.log(error)
     return internalError(res, "Failed to update package");
   }
 };

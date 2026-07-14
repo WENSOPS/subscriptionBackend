@@ -17,33 +17,31 @@ import {
   unprocessable,
 } from "../../utils/response.js";
 import { stringify } from "node:querystring";
-
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { GetObjectCommand } from "@aws-sdk/client-s3";
+import S3Client from "../../config/storage/s3.js"
 export const getMySubscription = async (req, res) => {
   const userId = req.user?.userId;
   try {
-    const subscription = await prisma.subscription.findMany({
+    const subscriptions = await prisma.subscription.findMany({
       where: { userId, status: "active" },
-      include: {
-        package: true,
-      },
+      include: { package: true },
     });
-    if (!subscription) {
+
+    if (!subscriptions.length) {
       return notFound(res, "No active subscription found");
     }
-    
-    const thumbnailUrl = subscription.package?.thumbnailUrlKey
-          ? await getSignedUrl(
-              s3Client,
-              new GetObjectCommand({
-                Bucket: process.env.S3_BUCKET,
-                Key: subscription.package?.thumbnailUrlKey,
-              })
-            )
-          : null;
 
-    subscription.package.thumbnailUrl = thumbnailUrl;
+    for (const subscription of subscriptions) {
+      subscription.package.thumbnailUrl = subscription.package?.thumbnailUrlKey
+        ? await getSignedUrl(S3Client, new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: subscription.package.thumbnailUrlKey,
+          }))
+        : null;
+    }
 
-    ok(res, subscription);
+    ok(res, subscriptions);
   } catch (error) {
     console.error("Error fetching subscription:", error);
     internalError(res, "Failed to fetch subscription");
@@ -68,13 +66,10 @@ export const getMySubscriptionHistory = async (req, res) => {
 
     for (const subscription of subscriptions) {
       const thumbnailUrl = subscription.package?.thumbnailUrlKey
-        ? await getSignedUrl(
-            s3Client,
-            new GetObjectCommand({
-              Bucket: process.env.S3_BUCKET,
-              Key: subscription.package?.thumbnailUrlKey,
-            })
-          )
+        ? await getSignedUrl(S3Client, new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: subscription.package.thumbnailUrlKey,
+          }))
         : null;
 
       subscription.package.thumbnailUrl = thumbnailUrl;
