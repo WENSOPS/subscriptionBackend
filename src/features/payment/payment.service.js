@@ -5,7 +5,6 @@ import cashfree from "../../config/cashfree.js";
 export const createCashfreeOrder = async (orderId, orderAmount, currency, packageId, customer) => {
 
    
-
     const orderRequest = {
       order_id: orderId,
       order_amount: String(orderAmount),
@@ -26,7 +25,7 @@ export const createCashfreeOrder = async (orderId, orderAmount, currency, packag
 
     return {
       orderId: order.order_id,
-      paymentLink: order.payment_link,
+      paymentSessionId: order.payment_session_id,
     };
   }
 

@@ -122,8 +122,14 @@ export const createPackage = async (req, res) => {
     trips,
     validity,
     thumbnailUrlKey,
+    category,
   } = req.body;
   try {
+
+    if(regularPrice < discountedPrice) {
+      return badRequest(res, "Regular price cannot be less than discounted price");
+    }
+
     const newPackage = await prisma.package.create({
       data: {
         name,
@@ -137,6 +143,7 @@ export const createPackage = async (req, res) => {
         trips,
         validity,
         thumbnailUrlKey,
+        category,
         packageServices: {
           create: services.map((service) => ({
             serviceId: service.id,
@@ -219,6 +226,7 @@ export const updatePackage = async (req, res) => {
     bodyguardType,
     discountedPrice,
     services,
+    category,
   } = req.body;
   try {
     const updatedPackage = await prisma.package.update({
@@ -242,6 +250,7 @@ export const updatePackage = async (req, res) => {
             })),
           },
         }),
+        category,
       },
       include: {
         packageServices: {

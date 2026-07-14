@@ -12,6 +12,7 @@ import storageRoutes from "./features/storage/storage.routes.js";
 import bookingRoutes from "./features/booking/booking.routes.js";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import axios from "axios";
 
 const app = express();
 
@@ -44,8 +45,15 @@ app.use("/api/v1/dashboard", dashboardRoutes);
 app.use("/api/v1/upload", storageRoutes);
 app.use("/api/v1/booking", bookingRoutes);
 
-app.get("/api/v1/health", (req, res) => {
-  res.send("Hello, World!");
+app.get("/api/v1/health", async (req, res) => {
+  // console.log('HIT:', new Date().toISOString(), req.query);
+ const response = await axios.get('https://data-storage.doubletick.io/org_Tl3NjkA3qK/chat-messages/51f5892c-977f-4f21-b8f2-415f410459bd/call-recordings/wacid.IhggMDA3QkM2MEVBMUZDMTA1Qzg1RkE3RDkxMDM1NUYwNTUcGAw5MTczMDQ2MDc5NTQVAgAVFgA=.mp3',{
+    headers: {
+      'Authorization': 'key_t1POnzbYPdiMAOxeHskabaTArW6tx7RpSQY4NQoVpxWzTW1hVzOGZ6IyRp72LD2CqxMwORRT8vhMZtGQVWFRFbXAoiVXGRxKUcuSjUdPIdeS2iFpCZOGpKrhddmMx9dR5AJ2hnhdIhGznco8uORYTljtwKTt7zEyWg2WeikJ2qWZ7m1f47M5VycchWI2u3e0p7HuqG19X9PcKyYsLW6DwEuOgrNTqM9bwzRo8DxpzGv2l7tAQ6WfrWIH6pmy'
+    }
+  })
+  console.log('response:', response.data);
+  res.send("Hello, World!", response.data);
 });
 
 export default app;

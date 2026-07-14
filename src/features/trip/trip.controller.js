@@ -30,6 +30,21 @@ export const requestTrip = async (req, res) => {
       tripType,
       services,
     } = req.body;
+
+    // Check subscription availability for the requested trip and belongs to the user
+    const availability = await checkSubscriptionAvailabilityForTrip(
+      subscriptionId,
+      services,
+      req.user.userId
+    );
+    
+    if (!availability.ok) {
+      return unprocessable(res, availability.message, {
+        code: availability.code,
+        unavailableServices: availability.unavailableServices || [],
+      });
+    }
+
     const trip = await prisma.trip.create({
       data: {
         subscriptionId: parseInt(subscriptionId),
@@ -44,6 +59,7 @@ export const requestTrip = async (req, res) => {
         })),
       },
     });
+
     created(res, trip);
   } catch (error) {
     console.error(error);

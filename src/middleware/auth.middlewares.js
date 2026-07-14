@@ -25,6 +25,8 @@ const authMiddleware = (requiredRoles = []) => {
       
       req.user = decoded;
 
+      console.log("Decoded JWT:", decoded.role, "Required Roles:", requiredRoles);
+
       if (requiredRoles.length > 0 && !requiredRoles.includes(decoded.role)) {
         return forbidden(res, "Insufficient permissions");
       }

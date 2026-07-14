@@ -160,7 +160,6 @@ export const handleWebhook = async (req, res) => {
           updatedOrder.couponId,
           updatedOrder.paymentId,
         );
-        
       } catch (error) {
         if (error.code === "P2025") {
           return notFound(res, "Order not found");
@@ -235,7 +234,6 @@ export const getAllPayments = async (req, res) => {
                 name: {
                   contains: search,
                 },
-                
               },
             },
             {
@@ -251,7 +249,7 @@ export const getAllPayments = async (req, res) => {
                   },
                 },
               ],
-            }
+            },
           ],
         },
         include: {
@@ -296,7 +294,7 @@ export const getAllPayments = async (req, res) => {
         },
       }),
     ]);
-    
+
     return ok(res, {
       payments,
       totalCount,
@@ -334,7 +332,7 @@ export const getPaymentById = async (req, res) => {
         },
       },
     });
-    
+
     if (!payment) {
       return notFound(res, "Payment not found");
     }
@@ -343,5 +341,31 @@ export const getPaymentById = async (req, res) => {
   } catch (err) {
     console.error("[getPaymentById] Error:", err);
     return internalError(res, "Failed to fetch payment");
+  }
+};
+
+export const getUserPayments = async (req, res) => {
+  const userId = req.user.userId;
+  try {
+    const payments = await prisma.order.findMany({
+      where: { userId, status: { in: ["PAID", "FAILED", "PENDING"] } },
+      include: {
+        package: {
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            regularPrice: true,
+            discountedPrice: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    return ok(res, payments);
+  } catch (err) {
+    console.error("[getUserPayments] Error:", err);
+    return internalError(res, "Failed to fetch user payments");
   }
 };

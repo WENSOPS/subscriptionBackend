@@ -130,6 +130,7 @@ model Subscription {
   adminRemarks String?
   vehicleType String?
   bodyguardType String?
+  category String?
   services Json? // Store subscribed services as JSON array
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

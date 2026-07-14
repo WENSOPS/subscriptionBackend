@@ -42,7 +42,7 @@ export const requestTripValidation = [
   body("dropLocation").isString().withMessage("Drop location must be a string"),
   body("tripDate").isISO8601().withMessage("Trip date must be a valid date"),
   body("tripType")
-    .isIn(["airport-transfer", "8Hr/80Km"])
+    .isIn(["airport-transfer", "8Hr/80Km", "12 Hours"])
     .withMessage("Trip type must be either 'airport-transfer' or '8Hr/80Km'"),
   body("services").isArray().withMessage("Services must be an array"),
   body("services.*.id")
@@ -51,9 +51,6 @@ export const requestTripValidation = [
   body("services.*.name")
     .isString()
     .withMessage("Service name must be a string"),
-  body("services.*.price")
-    .isFloat({ gt: 0 })
-    .withMessage("Service price must be a positive number"),
   validate,
 ];
 

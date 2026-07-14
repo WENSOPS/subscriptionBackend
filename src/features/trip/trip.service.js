@@ -29,7 +29,8 @@ export const deductSubscriptionUsageForTrip = async (trip) => {
 
 export const checkSubscriptionAvailabilityForTrip = async (
 	subscriptionId,
-	selectedServices = []
+	selectedServices = [],
+	userId = null
 ) => {
 	const parsedSubscriptionId = parseInt(subscriptionId, 10);
 	if (Number.isNaN(parsedSubscriptionId)) {
@@ -52,6 +53,14 @@ export const checkSubscriptionAvailabilityForTrip = async (
 		};
 	}
 
+	if (subscription.status !== "active") {
+		return {
+			ok: false,
+			message: "Subscription is not active",
+			code: "SUBSCRIPTION_NOT_ACTIVE",
+		};
+	}
+
 	const tripsTotal = subscription.tripsTotal ?? 0;
 	const tripsUsed = subscription.tripsUsed ?? 0;
 	if (tripsUsed >= tripsTotal) {
@@ -59,6 +68,14 @@ export const checkSubscriptionAvailabilityForTrip = async (
 			ok: false,
 			message: "No trips available in this subscription",
 			code: "NO_TRIPS_AVAILABLE",
+		};
+	}
+
+	if (userId && subscription.userId !== userId) {
+		return {
+			ok: false,
+			message: "Subscription does not belong to the user",
+			code: "SUBSCRIPTION_NOT_OWNED",
 		};
 	}
 

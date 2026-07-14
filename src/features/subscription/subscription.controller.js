@@ -21,8 +21,8 @@ import { stringify } from "node:querystring";
 export const getMySubscription = async (req, res) => {
   const userId = req.user?.userId;
   try {
-    const subscription = await prisma.subscription.findFirst({
-      where: { userId },
+    const subscription = await prisma.subscription.findMany({
+      where: { userId, status: "active" },
       include: {
         package: true,
       },
@@ -30,10 +30,60 @@ export const getMySubscription = async (req, res) => {
     if (!subscription) {
       return notFound(res, "No active subscription found");
     }
+    
+    const thumbnailUrl = subscription.package?.thumbnailUrlKey
+          ? await getSignedUrl(
+              s3Client,
+              new GetObjectCommand({
+                Bucket: process.env.S3_BUCKET,
+                Key: subscription.package?.thumbnailUrlKey,
+              })
+            )
+          : null;
+
+    subscription.package.thumbnailUrl = thumbnailUrl;
+
     ok(res, subscription);
   } catch (error) {
     console.error("Error fetching subscription:", error);
     internalError(res, "Failed to fetch subscription");
+  }
+};
+
+export const getMySubscriptionHistory = async (req, res) => {
+  const userId = req.user?.userId;
+  try {
+    const subscriptions = await prisma.subscription.findMany({
+      where: { userId },
+      include: {
+        package: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+    if (!subscriptions) {
+      return notFound(res, "No subscription history found");
+    }
+
+    for (const subscription of subscriptions) {
+      const thumbnailUrl = subscription.package?.thumbnailUrlKey
+        ? await getSignedUrl(
+            s3Client,
+            new GetObjectCommand({
+              Bucket: process.env.S3_BUCKET,
+              Key: subscription.package?.thumbnailUrlKey,
+            })
+          )
+        : null;
+
+      subscription.package.thumbnailUrl = thumbnailUrl;
+    }
+
+    ok(res, subscriptions);
+  } catch (error) {
+    console.error("Error fetching subscription history:", error);
+    internalError(res, "Failed to fetch subscription history");
   }
 };
 
@@ -88,6 +138,17 @@ export const getSubscriptionById = async (req, res) => {
     if (!subscription) {
       return notFound(res, "Subscription not found");
     }
+    const thumbnailUrl = subscription.package?.thumbnailUrlKey
+      ? await getSignedUrl(
+          s3Client,
+          new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: subscription.package?.thumbnailUrlKey,
+          })
+        )
+      : null;
+
+    subscription.package.thumbnailUrl = thumbnailUrl;
     ok(res, subscription);
   } catch (error) {
     console.error("Error fetching subscription:", error);
