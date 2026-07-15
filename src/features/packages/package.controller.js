@@ -107,6 +107,77 @@ export const getPackageById = async (req, res) => {
     return internalError(res, "Failed to fetch package");
   }
 };
+export const getPackageServices = async (req, res) => {
+  try {
+    const { page = 1, limit = 10, search } = req.query;
+    const { packageId } = req.params;
+
+    const parsedPackageId = parseInt(packageId);
+
+    const packageExists = await prisma.package.findUnique({
+      where: { id: parsedPackageId },
+    });
+
+    if (!packageExists) {
+      return notFound(res, "Package not found");
+    }
+
+    const where = {
+      packageId: parsedPackageId,
+      ...(search && {
+        service: {
+          OR: [
+            { title: { contains: search } },
+            { description: { contains: search } },
+          ],
+        },
+      }),
+    };
+
+    const [total, packageServices] = await Promise.all([
+      prisma.packageService.count({ where }),
+      prisma.packageService.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: parseInt(limit),
+        include: {
+          service: true,
+        },
+      }),
+    ]);
+
+    const servicesWithUrls = await Promise.all(
+      packageServices.map(async (ps) => {
+        const thumbnailUrl = ps.service?.thumbnailUrlKey
+          ? await getSignedUrl(
+              s3Client,
+              new GetObjectCommand({
+                Bucket: process.env.S3_BUCKET,
+                Key: ps.service.thumbnailUrlKey,
+              })
+            )
+          : null;
+        return {
+          ...ps.service,
+          count: ps.count,
+          thumbnailUrl,
+        };
+      })
+    );
+
+    const response = {
+      total,
+      page: parseInt(page),
+      limit: parseInt(limit),
+      services: servicesWithUrls,
+    };
+
+    return ok(res, response, "Package services fetched successfully");
+  } catch (error) {
+    console.error("Error fetching package services:", error);
+    return internalError(res, "Failed to fetch package services");
+  }
+};
 
 export const createPackage = async (req, res) => {
   const {
@@ -123,12 +194,28 @@ export const createPackage = async (req, res) => {
     validity,
     thumbnailUrlKey,
     category,
+    images, // string[] of S3 keys
+    videos, // string[] of S3 keys
   } = req.body;
-  try {
 
-    if(regularPrice < discountedPrice) {
+  try {
+    // Defense-in-depth (also enforced in validation rules)
+    if (Number(regularPrice) < Number(discountedPrice)) {
       return badRequest(res, "Regular price cannot be less than discounted price");
     }
+
+    const mediaRecords = [
+      ...(Array.isArray(images) ? images : []).map((key, index) => ({
+        urlKey: key,
+        type: "IMAGE",
+        order: index,
+      })),
+      ...(Array.isArray(videos) ? videos : []).map((key, index) => ({
+        urlKey: key,
+        type: "VIDEO",
+        order: index,
+      })),
+    ];
 
     const newPackage = await prisma.package.create({
       data: {
@@ -150,6 +237,11 @@ export const createPackage = async (req, res) => {
             count: service.count || 1,
           })),
         },
+        ...(mediaRecords.length > 0 && {
+          packageMedia: {
+            create: mediaRecords,
+          },
+        }),
       },
       include: {
         packageServices: {
@@ -157,8 +249,11 @@ export const createPackage = async (req, res) => {
             service: true,
           },
         },
+        packageMedia: true,
       },
     });
+
+    // Sign thumbnail
     const thumbnailUrl = newPackage.thumbnailUrlKey
       ? await getSignedUrl(
           s3Client,
@@ -168,10 +263,38 @@ export const createPackage = async (req, res) => {
           })
         )
       : null;
+
+    // Sign all media (images + videos) in parallel
+    const signedMedia = await Promise.all(
+      newPackage.packageMedia.map(async (media) => ({
+        id: media.id,
+        type: media.type,
+        order: media.order,
+        urlKey: media.urlKey,
+        url: await getSignedUrl(
+          s3Client,
+          new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: media.urlKey,
+          })
+        ),
+      }))
+    );
+
     newPackage.thumbnailUrl = thumbnailUrl;
+    newPackage.images = signedMedia
+      .filter((m) => m.type === "IMAGE")
+      .sort((a, b) => a.order - b.order);
+    newPackage.videos = signedMedia
+      .filter((m) => m.type === "VIDEO")
+      .sort((a, b) => a.order - b.order);
+
     return created(res, newPackage, "Package created successfully");
   } catch (error) {
     console.log(error);
+    if (error.code === "P2002") {
+      return badRequest(res, "A package with this name already exists");
+    }
     return internalError(res, "Failed to create package");
   }
 };
@@ -227,6 +350,7 @@ export const updatePackage = async (req, res) => {
     discountedPrice,
     services,
     category,
+    thumbnailUrlKey
   } = req.body;
   
   try {
@@ -242,6 +366,7 @@ export const updatePackage = async (req, res) => {
         vehicleModel,
         bodyguardType,
         discountedPrice,
+        thumbnailUrlKey,
         ...(services && {
           packageServices: {
             deleteMany: {},
@@ -277,7 +402,6 @@ export const updatePackage = async (req, res) => {
     if (error.code === "P2025") {
       return notFound(res, "Package not found");
     }
-    console.log(error)
     return internalError(res, "Failed to update package");
   }
 };

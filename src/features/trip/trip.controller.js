@@ -19,9 +19,11 @@ import {
   unauthorized,
   unprocessable,
 } from "../../utils/response.js";
+import { sendWhatsAppTemplate, sendWhatsAppTemplateToBroadcast } from "../../utils/whatsapp-notification.js";
 
 export const requestTrip = async (req, res) => {
   try {
+    
     const {
       subscriptionId,
       pickupLocation,
@@ -30,14 +32,17 @@ export const requestTrip = async (req, res) => {
       tripType,
       services,
     } = req.body;
+    const phone = req.user?.mobileNumber;
+    const customerName = req.user?.name;
+    const plan = subscriptionId?subscriptionId:"";
 
     // Check subscription availability for the requested trip and belongs to the user
     const availability = await checkSubscriptionAvailabilityForTrip(
       subscriptionId,
       services,
-      req.user.userId
+      req.user.userId,
     );
-    
+
     if (!availability.ok) {
       return unprocessable(res, availability.message, {
         code: availability.code,
@@ -59,7 +64,23 @@ export const requestTrip = async (req, res) => {
         })),
       },
     });
-
+    const requestId = trip.id?trip.id:"";
+    // Send success template
+ 
+      sendWhatsAppTemplate({
+        to: phone,
+        // templateName: "trip_request",
+        templateName:"new_assignment_creation_2",
+        templateParams: [customerName, plan, requestId, new Date().toISOString()],
+      }),
+      sendWhatsAppTemplateToBroadcast(
+        "Testing Office",
+        "new_assignment_creation_2",
+        [requestId, customerName, plan, new Date().toISOString()],
+        phone,
+      ),
+     
+    
     created(res, trip);
   } catch (error) {
     console.error(error);
@@ -70,7 +91,12 @@ export const requestTrip = async (req, res) => {
 export const getMyTrips = async (req, res) => {
   try {
     const trips = await prisma.trip.findMany({
-      where: { userId: req.user.userId },
+      where: {
+        userId: req.user.userId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
     });
     ok(res, trips);
   } catch (error) {
@@ -93,7 +119,10 @@ export const createTrip = async (req, res) => {
       services,
       userId,
     } = req.body;
-
+    const phone = req.user?.mobileNumber;
+    const customerName = req.user?.name;
+    
+    const plan = subscriptionId;
     const availability = await checkSubscriptionAvailabilityForTrip(
       subscriptionId,
       services,
@@ -122,9 +151,16 @@ export const createTrip = async (req, res) => {
         })),
       },
     });
+    const tripId = trip.id?trip.id:"";
 
     deductSubscriptionUsageForTrip(trip); // Deduct usage immediately for admin-created trips
 
+    sendWhatsAppTemplate({
+        to: phone,
+        // templateName: "trip_create",
+        templateName:"new_assignment_creation_2",
+        templateParams: [customerName, plan, tripId, new Date().toISOString()],
+      }),
     created(res, trip);
   } catch (error) {
     console.error(error);
@@ -136,7 +172,7 @@ export const approveTrip = async (req, res) => {
   try {
     const { id } = req.params;
     const { assignmentId } = req.body;
-    
+
     const trip = await prisma.trip.update({
       where: { id: parseInt(id) },
       data: { status: "confirmed", confirmedBy: req.user.userId, assignmentId },
@@ -270,7 +306,7 @@ export const updateTrip = async (req, res) => {
         dropLocation,
         tripDate: new Date(tripDate),
         tripType,
-         services: services.map((service) => ({
+        services: services.map((service) => ({
           id: service.id,
           name: service.name,
         })),
@@ -311,7 +347,7 @@ export const markCompleted = async (req, res) => {
     if (!trip) {
       return notFound(res, "Trip not found");
     }
-    if(trip.status === "completed") {
+    if (trip.status === "completed") {
       return badRequest(res, "Trip is already marked as completed");
     }
 

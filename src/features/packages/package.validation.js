@@ -14,8 +14,18 @@ export const createPackageValidationRules = () => {
     return [
         body("name").notEmpty().withMessage("Name is required"),
         body("description").notEmpty().withMessage("Description is required"),
-        body("regularPrice").isFloat({ gt: 0 }).withMessage("Regular price must be a positive number"),
-        body("discountedPrice").isFloat({ gt: 0 }).withMessage("Discounted price must be a positive number"),
+        body("regularPrice")
+            .isFloat({ gt: 0 }).withMessage("Regular price must be a positive number")
+            .toFloat(),
+        body("discountedPrice")
+            .isFloat({ gt: 0 }).withMessage("Discounted price must be a positive number")
+            .toFloat()
+            .custom((value, { req }) => {
+                if (Number(req.body.regularPrice) < value) {
+                    throw new Error("Regular price cannot be less than discounted price");
+                }
+                return true;
+            }),
         body("services").isArray({ min: 1 }).withMessage("At least one service is required"),
         body("services.*.id").isInt({ gt: 0 }).withMessage("Each service ID must be a positive integer"),
         body("services.*.count").optional().isInt({ gt: 0 }).withMessage("Service count must be a positive integer"),
@@ -25,6 +35,21 @@ export const createPackageValidationRules = () => {
         body("trips").isInt({ gt: 0 }).withMessage("Trips must be a positive integer"),
         body("validity").isInt({ gt: 0 }).withMessage("Validity must be a positive integer"),
         body("thumbnailUrlKey").notEmpty().withMessage("Thumbnail URL key is required"),
+
+        body("images")
+            .optional()
+            .isArray({ max: 10 }).withMessage("Images must be an array with at most 10 items"),
+        body("images.*")
+            .isString().withMessage("Each image must be a valid S3 key")
+            .notEmpty().withMessage("Image key cannot be empty"),
+
+        body("videos")
+            .optional()
+            .isArray({ max: 5 }).withMessage("Videos must be an array with at most 5 items"),
+        body("videos.*")
+            .isString().withMessage("Each video must be a valid S3 key")
+            .notEmpty().withMessage("Video key cannot be empty"),
+
         validate
     ];
 }
@@ -34,6 +59,13 @@ export const createPackageValidationRules = () => {
 export const idValidationRules = () => {
     return [
         param("id").isInt({ gt: 0 }).withMessage("ID must be a positive integer"),
+        validate
+    ];
+}
+
+export const packageIdValidationRules = () => {
+    return [
+        param("packageId").isInt({ gt: 0 }).withMessage("Package ID must be a positive integer"),
         validate
     ];
 }

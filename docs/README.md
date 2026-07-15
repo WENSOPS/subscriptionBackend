@@ -189,6 +189,30 @@ Manage trip lifecycle including request, approval, listing, update, and deletion
 
 ---
 
+### 10. [Offer API Documentation](./offer.md)
+
+**Base Path:** `/api/v1/homepage`
+
+Manage homepage offers and offer benefits.
+
+**Key Endpoints:**
+- `GET /offer/:category` - Get active offer by category name (public)
+- `GET /offer/id/:id` - Get offer details by ID (public)
+- `GET /offer` - List all offers (admin/ops)
+- `POST /offer` - Create an offer (admin/ops)
+- `PUT /offer/:id` - Update an offer (admin/ops)
+- `DELETE /offer/:id` - Delete an offer (admin/ops)
+
+**Key Fields:**
+- `slug` - Unique string identifier
+- `isActive` - Whether offer is active
+- `startDate` / `endDate` - Validity dates
+- `category` - Category name
+- `title` - Main header title
+- `benefits` - Associated list of benefits
+
+---
+
 ## Important Notes
 
 ### Thumbnail URL Mapping

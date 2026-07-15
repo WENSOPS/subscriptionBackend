@@ -40,29 +40,56 @@ model Service {
   updatedAt DateTime @updatedAt
   @@map("services") // Map to the "services" table in the database
 }
+model Offers{
+  id Int @id @default(autoincrement())
+  packageId Int 
+  end_date DateTime
+}
+enum PackageMediaType {
+  IMAGE
+  VIDEO
+}
 
 model Package {
-  id    Int     @id @default(autoincrement())
-  name  String @unique
-  regularPrice Float
+  id              Int      @id @default(autoincrement())
+  name            String   @unique
+  regularPrice    Float
   discountedPrice Float
-  description String?
-  tags String?
-  vehicleType String?
-  vehicleModel Json? // Store as JSON to allow for multiple models
-  bodyguardType String?
-  trips Int?
-  category String?
-  validity Int? // Validity in months
+  description     String?
+  tags            String?
+  vehicleType     String?
+  vehicleModel    Json? // Store as JSON to allow for multiple models
+  bodyguardType   String?
+  trips           Int?
+  category        String?
+  validity        Int? // Validity in months
   thumbnailUrlKey String?
-  isActive Boolean @default(true)
+  isActive        Boolean  @default(true)
+
   packageServices PackageService[]
-  coupons Coupon[]
-  orders Order[]
-  subscriptions Subscription[]
+  packageMedia    PackageMedia[]
+  coupons         Coupon[]
+  offers          Offer[]
+  orders          Order[]
+  subscriptions   Subscription[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  @@map("packages") // Map to the "packages" table in the database
+
+  @@map("packages")
+}
+
+model PackageMedia {
+  id        Int              @id @default(autoincrement())
+  packageId Int
+  package   Package          @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  type      PackageMediaType
+  urlKey    String
+  order     Int              @default(0)
+  createdAt DateTime         @default(now())
+
+  @@index([packageId])
+  @@map("package_media")
 }
 
 model PackageService {
@@ -217,4 +244,60 @@ enum BookingStatus {
   cancelled
   completed
   failed
+}
+model Offer {
+  id        Int       @id @default(autoincrement())
+  slug      String    @unique // "founding-fy-2026"
+
+  isActive  Boolean   @default(true)
+  startDate DateTime?            // 2026-07-01T00:00:00Z
+  endDate   DateTime             // 2026-07-31T23:59:59Z
+
+  category  String 
+
+  alertText String    @default("Access Closes {date} — 11:59 PM IST")
+  eyebrow   String?   // "Financial Year Founding Member Access"
+
+  title       String  // "Lock In Founding Rates."
+  titleAccent String? // "Before the FY Window Closes."
+
+  description String? @db.Text // "After {date}, all new members pay the updated price..."
+
+  countdownLabel String? // "Time remaining to claim founding rates"
+  pricingLabel   String? // "Current founding rates — valid till {date}"
+
+  benefitsHeading String?        // "What you get as a founding member"
+  benefits        OfferBenefit[]
+
+  deadlineNoteStrong String? // "After {date}:"
+  deadlineNoteBody   String? @db.Text // "New memberships will be onboarded at the updated pricing..."
+
+  ctaPrimaryText String? // "Claim Founding Rate — {packageName}"
+  ctaPrimaryHref String? // "/booking/premium"
+
+  featuredPackageId Int?
+  featuredPackage   Package? @relation(fields: [featuredPackageId], references: [id], onDelete: SetNull)
+
+  ctaSecondaryText String? // "Ask Concierge →"
+
+  footerNote String? // "wensforce.com · +91-73046 07954 · Founding access closes {date}"
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+
+  @@map("offers")
+}
+
+model OfferBenefit {
+  id      Int   @id @default(autoincrement())
+  offerId Int
+  offer   Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+
+  icon        String      // "Tag" | "Star" | "CheckCircle"
+  title       String      // "Current FY Pricing"
+  description String @db.Text // "You pay today's rate for this membership year."
+  order       Int    @default(0) // 0, 1, 2
+
+  @@map("offer_benefits")
 }

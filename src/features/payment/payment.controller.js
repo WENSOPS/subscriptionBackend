@@ -10,11 +10,16 @@ import {
 import { calculateDiscount } from "../../services/discount.service.js";
 import cashfree from "../../config/cashfree.js";
 import { createSubscription } from "../subscription/subscription.service.js";
+import {
+  sendWhatsAppTemplate,
+  sendWhatsAppTemplateToBroadcast,
+} from "../../utils/whatsapp-notification.js";
 const CF_BASE_URL = "https://sandbox.cashfree.com"; // sandbox url
 
 export const createOrder = async (req, res) => {
   const { packageId, couponCode } = req.body;
   const userId = req.user.userId;
+  console.log(req.user);
 
   // ── Input validation ──────────────────────────────────────────
   const parsedPackageId = parseInt(packageId, 10);
@@ -84,10 +89,13 @@ export const createOrder = async (req, res) => {
           couponId: couponId || null,
           cashfreeOrderId: cashfreeResponse.orderId,
           paymentId: cashfreeResponse.paymentSessionId,
-          status: "PENDING",
+          status:
+            req.user.role === "admin" || req.user.role === "ops"
+              ? "ACTIVE"
+              : "PENDING",
         },
       });
-
+      console.log(cashfreeResponse.orderId,"cashfreeorderID")
       // Mark coupon as used within the same transaction
       if (couponId) {
         await tx.coupon.update({
@@ -185,6 +193,8 @@ export const handleWebhook = async (req, res) => {
 
 export const verifyPayment = async (req, res) => {
   const { orderId } = req.params;
+  const phone = req.user?.mobileNumber;
+  const customerName = req.user?.name;
 
   const order = await prisma.order.findUnique({
     where: { cashfreeOrderId: orderId },
@@ -206,7 +216,18 @@ export const verifyPayment = async (req, res) => {
       order.status = "PAID";
     }
   }
+  await sendWhatsAppTemplate({
+    to: phone,
+    templateName: "new_assignment_creation_2",
+    templateParams: [customerName, null, orderId, new Date().toISOString()],
+  });
 
+  await sendWhatsAppTemplateToBroadcast(
+    "Testing Office",
+    "new_assignment_creation_2",
+    [orderId, customerName, null, new Date().toISOString()],
+    phone,
+  );
   return ok(res, {
     orderId: order.id,
     status: order.status, // "PAID" | "FAILED" | "PENDING"

@@ -19,7 +19,7 @@ export const createTripValidation = [
   body("dropLocation").isString().withMessage("Drop location must be a string"),
   body("tripDate").isISO8601().withMessage("Trip date must be a valid date"),
   body("tripType")
-    .isIn(["airport-transfer", "8Hr/80Km"])
+    .isIn(["airport-transfer", "8Hour/80Km", "Full day"])
     .withMessage("Trip type must be either 'airport-transfer' or '8Hr/80Km'"),
   body("services").isArray().withMessage("Services must be an array"),
   body("services.*.id")

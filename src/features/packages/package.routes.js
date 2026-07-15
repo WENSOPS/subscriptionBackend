@@ -13,6 +13,8 @@ router.get('/', authMiddleware(['admin']), packageController.getAllPackages);
 router.get('/user', packageController.getAllPackagesForUsers);
 // Get a package by ID
 router.get('/:id', packageValidation.idValidationRules(), packageController.getPackageById);
+// Get services in a package
+router.get('/:packageId/services',authMiddleware(['admin']), packageValidation.packageIdValidationRules(), packageController.getPackageServices);
 // Update a package by ID
 router.put('/:id', authMiddleware(['admin']), packageValidation.idValidationRules(), packageController.updatePackage);
 // Delete a package by ID
