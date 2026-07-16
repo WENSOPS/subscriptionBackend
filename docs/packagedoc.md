@@ -12,6 +12,7 @@ Base Path: `/api/v1/package`
 4. [Get Package by ID](#4-get-package-by-id)
 5. [Update Package](#5-update-package)
 6. [Delete Package](#6-delete-package)
+7. [Get Services in Package](#7-get-services-in-package)
 
 ---
 
@@ -537,6 +538,72 @@ Delete a package by its ID.
 | `403`  | `"Access forbidden"`             | Role not permitted            |
 | `404`  | `"Package not found"`            | No package with the given ID  |
 | `500`  | `"Failed to delete package"`     | Server/DB error               |
+
+---
+
+## 7. Get Services in Package
+
+Retrieve services associated with a specific package along with package price details.
+
+**Endpoint:** `GET /:packageId/services`
+
+**Allowed Roles:** `admin`
+
+### Path Parameters
+
+| Parameter | Type    | Required | Description         |
+|-----------|---------|----------|---------------------|
+| `packageId` | integer | Yes      | ID of the package.  |
+
+### Query Parameters
+
+| Parameter | Type    | Default | Description                              |
+|-----------|---------|---------|------------------------------------------|
+| `page`    | integer | 1       | Page number for pagination.              |
+| `limit`   | integer | 10      | Number of services per page.             |
+| `search`  | string  | -       | Search by service title or description.  |
+
+**Example Request:** `GET /api/v1/package/1/services?page=1&limit=5`
+
+### Response
+
+#### Success `200 OK`
+```json
+{
+  "success": true,
+  "message": "Package services fetched successfully",
+  "data": {
+    "total": 3,
+    "page": 1,
+    "limit": 5,
+    "services": [
+      {
+        "id": 1,
+        "title": "Bodyguard Service",
+        "description": "Professional bodyguard",
+        "thumbnailUrlKey": "services/bodyguard.jpg",
+        "isActive": true,
+        "price": 100,
+        "createdAt": "2026-06-03T10:00:00.000Z",
+        "updatedAt": "2026-06-03T10:00:00.000Z",
+        "count": 2,
+        "thumbnailUrl": "https://s3-bucket.amazonaws.com/services/bodyguard.jpg?..."
+      }
+    ],
+    "regularPrice": 5000,
+    "discountedPrice": 3500,
+    "price": 3500
+  }
+}
+```
+
+#### Error Responses
+
+| Status | Message | Cause |
+|--------|---------|-------|
+| `400`  | `"Package ID must be a positive integer"` | Invalid `packageId` parameter |
+| `404`  | `"Package not found"` | Package with the given ID does not exist |
+| `500`  | `"Failed to fetch package services"` | Server/DB error |
 
 ---
 

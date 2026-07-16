@@ -20,7 +20,7 @@ export const createTripValidation = [
   body("tripDate").isISO8601().withMessage("Trip date must be a valid date"),
   body("tripType")
     .isIn(["airport-transfer", "8Hour/80Km", "Full day"])
-    .withMessage("Trip type must be either 'airport-transfer' or '8Hr/80Km'"),
+    .withMessage("Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'"),
   body("services").isArray().withMessage("Services must be an array"),
   body("services.*.id")
     .isInt()
@@ -32,6 +32,11 @@ export const createTripValidation = [
     .optional()
     .isFloat({ gt: 0 })
     .withMessage("Service price must be a positive number"),
+  body("additionalAmount")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("Additional amount must be a non-negative number")
+    .toFloat(),
   validate,
 ];
 
@@ -42,8 +47,8 @@ export const requestTripValidation = [
   body("dropLocation").isString().withMessage("Drop location must be a string"),
   body("tripDate").isISO8601().withMessage("Trip date must be a valid date"),
   body("tripType")
-    .isIn(["airport-transfer", "8Hr/80Km", "12 Hours"])
-    .withMessage("Trip type must be either 'airport-transfer' or '8Hr/80Km'"),
+    .isIn(["airport-transfer", "8Hr/80Km", "Full day"])
+    .withMessage("Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'"),
   body("services").isArray().withMessage("Services must be an array"),
   body("services.*.id")
     .isInt()
@@ -51,6 +56,11 @@ export const requestTripValidation = [
   body("services.*.name")
     .isString()
     .withMessage("Service name must be a string"),
+  body("additionalAmount")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("Additional amount must be a non-negative number")
+    .toFloat(),
   validate,
 ];
 
@@ -76,8 +86,8 @@ export const updateTripValidation = [
     .withMessage("Trip date must be a valid date"),
   body("tripType")
     .optional()
-    .isIn(["airport-transfer", "8Hr/80Km"])
-    .withMessage("Trip type must be either 'airport-transfer' or '8Hr/80Km'"),
+    .isIn(["airport-transfer", "8Hr/80Km", "Full day"])
+    .withMessage("Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'"),
   body("services")
     .optional()
     .isArray()
@@ -90,10 +100,20 @@ export const updateTripValidation = [
     .optional()
     .isFloat({ gt: 0 })
     .withMessage("Service price must be a positive number"),
+  body("additionalAmount")
+    .optional()
+    .isFloat({ min: 0 })
+    .withMessage("Additional amount must be a non-negative number")
+    .toFloat(),
   validate,
 ];
 
 export const deleteTripValidation = [
+  param("id").isInt().withMessage("Trip ID must be an integer"),
+  validate,
+];
+
+export const getTripByIdValidation = [
   param("id").isInt().withMessage("Trip ID must be an integer"),
   validate,
 ];

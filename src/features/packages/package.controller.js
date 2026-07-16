@@ -19,6 +19,51 @@ import {
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../../config/storage/s3.js";
 
+const signPackageMedia = async (pkg) => {
+  if (!pkg) return null;
+
+  // Sign thumbnail
+  pkg.thumbnailUrl = pkg.thumbnailUrlKey
+    ? await getSignedUrl(
+      s3Client,
+      new GetObjectCommand({
+        Bucket: process.env.S3_BUCKET,
+        Key: pkg.thumbnailUrlKey,
+      })
+    )
+    : null;
+
+  // Sign packageMedia relation if loaded
+  if (pkg.packageMedia) {
+    const signedMedia = await Promise.all(
+      pkg.packageMedia.map(async (media) => ({
+        id: media.id,
+        type: media.type,
+        order: media.order,
+        urlKey: media.urlKey,
+        url: await getSignedUrl(
+          s3Client,
+          new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: media.urlKey,
+          })
+        ),
+      }))
+    );
+
+    pkg.images = signedMedia
+      .filter((m) => m.type === "IMAGE")
+      .sort((a, b) => a.order - b.order);
+    pkg.videos = signedMedia
+      .filter((m) => m.type === "VIDEO")
+      .sort((a, b) => a.order - b.order);
+  } else {
+    pkg.images = [];
+    pkg.videos = [];
+  }
+
+  return pkg;
+};
 
 export const getAllPackages = async (req, res) => {
   try {
@@ -40,22 +85,14 @@ export const getAllPackages = async (req, res) => {
               service: true,
             },
           },
+          packageMedia: true,
         },
       }),
     ]);
 
     const packageWithImages = await Promise.all(
       packages.map(async (pkg) => {
-        const thumbnailUrl = pkg.thumbnailUrlKey
-          ? await getSignedUrl(
-            s3Client,
-            new GetObjectCommand({
-              Bucket: process.env.S3_BUCKET,
-              Key: pkg.thumbnailUrlKey,
-            })
-          )
-          : null;
-        return { ...pkg, thumbnailUrl };
+        return await signPackageMedia(pkg);
       })
     );
 
@@ -65,7 +102,7 @@ export const getAllPackages = async (req, res) => {
       limit: parseInt(limit),
       packages: packageWithImages,
     };
-    
+
     return ok(res, response, "Packages fetched successfully");
   } catch (error) {
     console.log(error);
@@ -86,24 +123,17 @@ export const getPackageById = async (req, res) => {
             service: true,
           },
         },
+        packageMedia: true,
       },
     });
     if (!pkg) {
       return notFound(res, "Package not found");
     }
-    const thumbnailUrl = pkg.thumbnailUrlKey
-      ? await getSignedUrl(
-          s3Client,
-          new GetObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: pkg.thumbnailUrlKey,
-          })
-        )
-      : null;
-    pkg.thumbnailUrl = thumbnailUrl;
-    
+    await signPackageMedia(pkg);
+
     return ok(res, pkg, "Package fetched successfully");
   } catch (error) {
+    console.error("Error in getPackageById:", error);
     return internalError(res, "Failed to fetch package");
   }
 };
@@ -150,12 +180,12 @@ export const getPackageServices = async (req, res) => {
       packageServices.map(async (ps) => {
         const thumbnailUrl = ps.service?.thumbnailUrlKey
           ? await getSignedUrl(
-              s3Client,
-              new GetObjectCommand({
-                Bucket: process.env.S3_BUCKET,
-                Key: ps.service.thumbnailUrlKey,
-              })
-            )
+            s3Client,
+            new GetObjectCommand({
+              Bucket: process.env.S3_BUCKET,
+              Key: ps.service.thumbnailUrlKey,
+            })
+          )
           : null;
         return {
           ...ps.service,
@@ -170,6 +200,9 @@ export const getPackageServices = async (req, res) => {
       page: parseInt(page),
       limit: parseInt(limit),
       services: servicesWithUrls,
+      regularPrice: packageExists.regularPrice,
+      discountedPrice: packageExists.discountedPrice,
+      price: packageExists.discountedPrice,
     };
 
     return ok(res, response, "Package services fetched successfully");
@@ -256,12 +289,12 @@ export const createPackage = async (req, res) => {
     // Sign thumbnail
     const thumbnailUrl = newPackage.thumbnailUrlKey
       ? await getSignedUrl(
-          s3Client,
-          new GetObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: newPackage.thumbnailUrlKey,
-          })
-        )
+        s3Client,
+        new GetObjectCommand({
+          Bucket: process.env.S3_BUCKET,
+          Key: newPackage.thumbnailUrlKey,
+        })
+      )
       : null;
 
     // Sign all media (images + videos) in parallel
@@ -314,20 +347,12 @@ export const getAllPackagesForUsers = async (req, res) => {
             service: true,
           },
         },
+        packageMedia: true,
       },
     });
-    // Fetch signed URLs for thumbnails
+    // Fetch signed URLs for thumbnails and media
     for (const pkg of packages) {
-      const thumbnailUrl = pkg.thumbnailUrlKey
-        ? await getSignedUrl(
-            s3Client,
-            new GetObjectCommand({
-              Bucket: process.env.S3_BUCKET,
-              Key: pkg.thumbnailUrlKey,
-            })
-          )
-        : null;
-      pkg.thumbnailUrl = thumbnailUrl;
+      await signPackageMedia(pkg);
     }
     return ok(res, packages, "Packages fetched successfully for users");
   } catch (error) {
@@ -350,10 +375,36 @@ export const updatePackage = async (req, res) => {
     discountedPrice,
     services,
     category,
-    thumbnailUrlKey
+    thumbnailUrlKey,
+    images,             // newly uploaded image S3 keys
+    videos,             // newly uploaded video S3 keys
+    existingPhotoKeys,   // kept image S3 keys
+    existingVideoKeys    // kept video S3 keys
   } = req.body;
-  
+
   try {
+    const finalImages = [
+      ...(Array.isArray(existingPhotoKeys) ? existingPhotoKeys : []),
+      ...(Array.isArray(images) ? images : []),
+    ];
+    const finalVideos = [
+      ...(Array.isArray(existingVideoKeys) ? existingVideoKeys : []),
+      ...(Array.isArray(videos) ? videos : []),
+    ];
+
+    const mediaRecords = [
+      ...finalImages.map((key, index) => ({
+        urlKey: key,
+        type: "IMAGE",
+        order: index,
+      })),
+      ...finalVideos.map((key, index) => ({
+        urlKey: key,
+        type: "VIDEO",
+        order: index,
+      })),
+    ];
+
     const updatedPackage = await prisma.package.update({
       where: { id: parseInt(id) },
       data: {
@@ -376,6 +427,10 @@ export const updatePackage = async (req, res) => {
             })),
           },
         }),
+        packageMedia: {
+          deleteMany: {},
+          create: mediaRecords,
+        },
         category,
       },
       include: {
@@ -384,19 +439,10 @@ export const updatePackage = async (req, res) => {
             service: true,
           },
         },
+        packageMedia: true,
       },
     });
-    // Fetch signed URL for the updated package thumbnail
-    const thumbnailUrl = updatedPackage.thumbnailUrlKey
-      ? await getSignedUrl(
-          s3Client,
-          new GetObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: updatedPackage.thumbnailUrlKey,
-          })
-        )
-      : null;
-    updatedPackage.thumbnailUrl = thumbnailUrl;
+    await signPackageMedia(updatedPackage);
     return ok(res, updatedPackage, "Package updated successfully");
   } catch (error) {
     if (error.code === "P2025") {

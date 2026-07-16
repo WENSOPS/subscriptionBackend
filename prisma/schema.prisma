@@ -37,6 +37,7 @@ model Service {
   isActive Boolean @default(true)
   packageServices PackageService[]
   createdAt DateTime @default(now())
+  price Float @default(100)
   updatedAt DateTime @updatedAt
   @@map("services") // Map to the "services" table in the database
 }
@@ -170,27 +171,30 @@ model Subscription {
 }
 
 model Trip {
-  id    Int     @id @default(autoincrement())
-  userId Int
-  subscriptionId Int
-  assignmentId String?
-  pickupLocation String
-  dropLocation String
-  tripDate DateTime
-  tripType String
-  status tripStatus @default(requested)
-  confirmedBy Int? // Store admin ID who confirmed the trip
-  cancelledBy Int? // Store admin ID who cancelled the trip
+  id                 Int          @id @default(autoincrement())
+  userId             Int
+  subscriptionId     Int
+  assignmentId       String?
+  pickupLocation     String
+  dropLocation       String
+  tripDate           DateTime
+  tripType           String
+  status             tripStatus   @default(requested)
+  confirmedBy        Int?
+  cancelledBy        Int?
   cancellationReason String?
-  createdBy Int? // Store admin ID who created the trip
-  services  Json? // Store trip services as JSON array
-  user User @relation(fields: [userId], references: [id])
-  subscription Subscription @relation(fields: [subscriptionId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  @@map("trips") // Map to the "trips" table in the database
-}
+  createdBy          Int?
+  services           Json?        // restructured — see below
+  additionalAmount   Float        @default(0) // sum of addon charges only
 
+  user               User         @relation(fields: [userId], references: [id])
+  subscription       Subscription @relation(fields: [subscriptionId], references: [id])
+
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@map("trips")
+}
 // its for emergency , later need to delete it 
 model Booking {
   id    Int     @id @default(autoincrement())

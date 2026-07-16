@@ -78,6 +78,7 @@ User-facing trip request creation.
 | `dropLocation`   | string          | Yes      | Drop location. |
 | `tripDate`       | ISO date string | Yes      | Trip date/time. |
 | `tripType`       | string          | Yes      | One of `airport-transfer`, `8Hr/80Km`. |
+| `additionalAmount`| number         | No       | Additional surcharge/amount for the trip. |
 | `services`       | array           | Yes      | Array of selected services. |
 | `services[].name`| string          | Yes      | Service name. |
 | `services[].price`| number         | Yes      | Positive service price. |
@@ -91,6 +92,7 @@ User-facing trip request creation.
   "dropLocation": "Gurgaon Sector 45",
   "tripDate": "2026-07-01T10:30:00.000Z",
   "tripType": "airport-transfer",
+  "additionalAmount": 150.50,
   "services": [
     { "name": "Bodyguard", "price": 1200 },
     { "name": "SUV", "price": 2500 }
@@ -111,7 +113,8 @@ User-facing trip request creation.
     "pickupLocation": "Airport Terminal 3",
     "dropLocation": "Gurgaon Sector 45",
     "tripType": "airport-transfer",
-    "status": "requested"
+    "status": "requested",
+    "additionalAmount": 150.50
   }
 }
 ```
@@ -144,6 +147,7 @@ Admin/Ops creates a trip directly (auto-confirmed).
 | `tripDate`        | ISO date string | Yes      | Trip date/time. |
 | `tripType`        | string          | Yes      | One of `airport-transfer`, `8Hr/80Km`. |
 | `userId`          | integer         | Yes (used by controller) | Target user ID. |
+| `additionalAmount`| number          | No       | Additional surcharge/amount for the trip. |
 | `services`        | array           | Yes      | Array of selected services. |
 | `services[].name` | string          | Yes      | Service name. |
 | `services[].price`| number          | Yes      | Positive service price. |
@@ -288,6 +292,7 @@ Any updatable trip fields may be provided.
 | `tripDate`        | ISO date string | No       | Trip date/time. |
 | `tripType`        | string          | No       | One of `airport-transfer`, `8Hr/80Km`. |
 | `services`        | array           | No       | Service list payload. |
+| `additionalAmount`| number          | No       | Additional surcharge/amount for the trip. |
 
 ### Error Responses
 
@@ -342,7 +347,7 @@ Get trip details by ID.
 
 ### Success Response `200 OK`
 
-Returns single trip object.
+Returns single trip object (including `additionalAmount`).
 
 ### Error Responses
 

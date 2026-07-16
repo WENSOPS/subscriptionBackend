@@ -54,13 +54,13 @@ export const listServices = async (req, res) => {
         ...service,
         thumbnailUrl: service.thumbnailUrlKey
           ? await getSignedUrl(
-              s3Client,
-              new GetObjectCommand({
-                Bucket: process.env.S3_BUCKET,
-                Key: service.thumbnailUrlKey,
-              }),
-              { expiresIn: 3600 }, // 1 hour
-            )
+            s3Client,
+            new GetObjectCommand({
+              Bucket: process.env.S3_BUCKET,
+              Key: service.thumbnailUrlKey,
+            }),
+            { expiresIn: 3600 }, // 1 hour
+          )
           : null,
       })),
     );
@@ -98,13 +98,13 @@ export const getServiceById = async (req, res) => {
     }
     const thumbnailUrl = service.thumbnailUrlKey
       ? await getSignedUrl(
-          s3Client,
-          new GetObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: service.thumbnailUrlKey,
-          }),
-          { expiresIn: 3600 }, // 1 hour
-        )
+        s3Client,
+        new GetObjectCommand({
+          Bucket: process.env.S3_BUCKET,
+          Key: service.thumbnailUrlKey,
+        }),
+        { expiresIn: 3600 }, // 1 hour
+      )
       : null;
     return res.status(200).json({
       success: true,
@@ -159,6 +159,83 @@ export const deleteService = async (req, res) => {
     return res
       .status(500)
       .json({ success: false, message: "Failed to delete service" });
+  }
+};
+
+export const servicesNotIncluded = async (req, res) => {
+  try {
+    const { packageId } = req.params;
+    const parsedPackageId = parseInt(packageId);
+
+    const packageExists = await prisma.package.findUnique({
+      where: { id: parsedPackageId },
+    });
+
+    if (!packageExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Package not found",
+      });
+    }
+
+    const { page = 1, limit = 10, search } = req.query;
+    const where = {
+      packageServices: {
+        none: {
+          packageId: parsedPackageId,
+        },
+      },
+      ...(search && {
+        OR: [
+          { title: { contains: search } },
+          { description: { contains: search } },
+        ],
+      }),
+    };
+
+    const [total, services] = await Promise.all([
+      prisma.service.count({ where }),
+      prisma.service.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: parseInt(limit),
+      }),
+    ]);
+
+    const servicesWithUrls = await Promise.all(
+      services.map(async (service) => ({
+        ...service,
+        thumbnailUrl: service.thumbnailUrlKey
+          ? await getSignedUrl(
+            s3Client,
+            new GetObjectCommand({
+              Bucket: process.env.S3_BUCKET,
+              Key: service.thumbnailUrlKey,
+            }),
+            { expiresIn: 3600 },
+          )
+          : null,
+      })),
+    );
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        services: servicesWithUrls,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+        },
+      },
+      message: "Services not included in package retrieved successfully",
+    });
+  } catch (error) {
+    console.error("Error retrieving services not included in package:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to retrieve services not included in package",
+    });
   }
 };
 

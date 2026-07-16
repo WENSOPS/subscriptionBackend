@@ -11,6 +11,7 @@ Base Path: `/api/v1/service`
 3. [Get Service by ID](#3-get-service-by-id)
 4. [Update Service](#4-update-service)
 5. [Delete Service](#5-delete-service)
+6. [Get Services Not Included in Package](#6-get-services-not-included-in-package)
 
 ---
 
@@ -304,3 +305,67 @@ Delete a service by its ID.
 | `401`  | `"Unauthorized access"`          | Missing or invalid token      |
 | `403`  | `"Access forbidden"`             | Role not permitted            |
 | `500`  | `"Failed to delete service"`     | Server/DB error               |
+
+---
+
+## 6. Get Services Not Included in Package
+
+Retrieve all services that are not associated with the given package.
+
+**Endpoint:** `GET /not-included/:packageId`
+
+**Allowed Roles:** `admin`, `ops`, `user`
+
+### Path Parameters
+
+| Parameter | Type    | Required | Description         |
+|-----------|---------|----------|---------------------|
+| `packageId` | integer | Yes      | ID of the package.  |
+
+### Query Parameters
+
+| Parameter | Type    | Default | Description                              |
+|-----------|---------|---------|------------------------------------------|
+| `page`    | integer | 1       | Page number for pagination.              |
+| `limit`   | integer | 10      | Number of services per page.             |
+| `search`  | string  | -       | Search by service title or description.  |
+
+**Example:** `GET /api/v1/service/not-included/1?page=1&limit=5`
+
+### Response
+
+#### Success `200 OK`
+```json
+{
+  "success": true,
+  "message": "Services not included in package retrieved successfully",
+  "data": {
+    "services": [
+      {
+        "id": 5,
+        "title": "Premium Valet Security",
+        "description": "Armed chauffeur and security",
+        "thumbnailUrlKey": "services/valet.jpg",
+        "thumbnailUrl": "https://s3-bucket.amazonaws.com/services/valet.jpg?...",
+        "isActive": true,
+        "price": 300,
+        "createdAt": "2026-07-01T10:00:00.000Z",
+        "updatedAt": "2026-07-01T10:00:00.000Z"
+      }
+    ],
+    "pagination": {
+      "page": 1,
+      "limit": 5,
+      "total": 1
+    }
+  }
+}
+```
+
+#### Error Responses
+
+| Status | Message | Cause |
+|--------|---------|-------|
+| `400`  | `"Package ID must be a positive integer"` | Invalid `packageId` path param |
+| `404`  | `"Package not found"` | Package with the given ID does not exist |
+| `500`  | `"Failed to retrieve services not included in package"` | Server/DB error |

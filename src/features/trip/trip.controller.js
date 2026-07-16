@@ -31,6 +31,7 @@ export const requestTrip = async (req, res) => {
       tripDate,
       tripType,
       services,
+      additionalAmount,
     } = req.body;
     const phone = req.user?.mobileNumber;
     const customerName = req.user?.name;
@@ -58,6 +59,7 @@ export const requestTrip = async (req, res) => {
         tripDate: new Date(tripDate),
         tripType,
         userId: req.user.userId,
+        additionalAmount: additionalAmount !== undefined ? additionalAmount : 0,
         services: services.map((service) => ({
           id: service.id,
           name: service.name,
@@ -118,6 +120,7 @@ export const createTrip = async (req, res) => {
       tripType,
       services,
       userId,
+      additionalAmount,
     } = req.body;
     const phone = req.user?.mobileNumber;
     const customerName = req.user?.name;
@@ -145,6 +148,7 @@ export const createTrip = async (req, res) => {
         status: "confirmed", // Admin-created trips are confirmed by default
         createdBy: req.user.userId,
         userId,
+        additionalAmount: additionalAmount !== undefined ? additionalAmount : 0,
         services: services.map((service) => ({
           id: service.id,
           name: service.name,
@@ -205,6 +209,7 @@ export const getTripById = async (req, res) => {
         confirmedBy: true,
         userId: true,
         services: true,
+        additionalAmount: true,
         user: {
           select: {
             id: true,
@@ -296,6 +301,7 @@ export const updateTrip = async (req, res) => {
       tripDate,
       tripType,
       services,
+      additionalAmount,
     } = req.body;
     const trip = await prisma.trip.update({
       where: { id: parseInt(id) },
@@ -306,6 +312,7 @@ export const updateTrip = async (req, res) => {
         dropLocation,
         tripDate: new Date(tripDate),
         tripType,
+        additionalAmount: additionalAmount !== undefined ? additionalAmount : undefined,
         services: services.map((service) => ({
           id: service.id,
           name: service.name,

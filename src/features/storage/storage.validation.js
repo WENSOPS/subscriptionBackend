@@ -1,4 +1,4 @@
-import { ALLOWED_IMAGE_TYPES, MAX_FILE_SIZE_MB } from "../../config/storage/s3.constants.js";
+import { ALLOWED_FILE_TYPES, MAX_FILE_SIZE_MB } from "../../config/storage/s3.constants.js";
 import { body, validationResult } from "express-validator";
 
 const validate = (req, res, next) => {
@@ -14,8 +14,8 @@ const validateImage = [
     body("contentType")
         .notEmpty()
         .withMessage("contentType is required")
-        .isIn(ALLOWED_IMAGE_TYPES)
-        .withMessage(`File type not allowed. Allowed: ${ALLOWED_IMAGE_TYPES.join(", ")}`),
+        .isIn(ALLOWED_FILE_TYPES)
+        .withMessage(`File type not allowed. Allowed: ${ALLOWED_FILE_TYPES.join(", ")}`),
     body("sizeMB")
         .optional()
         .isFloat({ max: MAX_FILE_SIZE_MB })
