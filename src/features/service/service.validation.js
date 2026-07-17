@@ -20,6 +20,9 @@ export const createServiceValidationRules = () => {
         body('isActive')
             .optional()
             .isBoolean().withMessage('isActive must be a boolean'),
+        body('price')
+            .optional()
+            .isFloat({ min: 0 }).withMessage('Price must be a non-negative number'),
         validate
     ];
 }

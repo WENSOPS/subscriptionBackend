@@ -19,11 +19,13 @@ import {
   unauthorized,
   unprocessable,
 } from "../../utils/response.js";
-import { sendWhatsAppTemplate, sendWhatsAppTemplateToBroadcast } from "../../utils/whatsapp-notification.js";
+import {
+  sendWhatsAppTemplate,
+  sendWhatsAppTemplateToBroadcast,
+} from "../../utils/whatsapp-notification.js";
 
 export const requestTrip = async (req, res) => {
   try {
-    
     const {
       subscriptionId,
       pickupLocation,
@@ -32,10 +34,11 @@ export const requestTrip = async (req, res) => {
       tripType,
       services,
       additionalAmount,
+      planName,
     } = req.body;
     const phone = req.user?.mobileNumber;
     const customerName = req.user?.name;
-    const plan = subscriptionId?subscriptionId:"";
+    const plan = subscriptionId ? subscriptionId : "";
 
     // Check subscription availability for the requested trip and belongs to the user
     const availability = await checkSubscriptionAvailabilityForTrip(
@@ -43,7 +46,6 @@ export const requestTrip = async (req, res) => {
       services,
       req.user.userId,
     );
-
     if (!availability.ok) {
       return unprocessable(res, availability.message, {
         code: availability.code,
@@ -66,24 +68,50 @@ export const requestTrip = async (req, res) => {
         })),
       },
     });
-    const requestId = trip.id?trip.id:"";
+    const requestId = trip.id ? trip.id : "";
     // Send success template
- 
-      sendWhatsAppTemplate({
-        to: phone,
-        // templateName: "trip_request",
-        templateName:"new_assignment_creation_2",
-        templateParams: [customerName, plan, requestId, new Date().toISOString()],
-      }),
+    (sendWhatsAppTemplate({
+      to: phone,
+      templateName: "trip_request_client",
+
+      templateParams: [
+        customerName,
+        plan,
+        planName,
+        requestId,
+        new Date().toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+      ],
+    }),
       sendWhatsAppTemplateToBroadcast(
         "Testing Office",
-        "new_assignment_creation_2",
-        [requestId, customerName, plan, new Date().toISOString()],
+        "trip_request_team",
+
+        [
+          requestId,
+          customerName,
+          plan,
+          planName,
+          new Date().toLocaleString("en-IN", {
+            timeZone: "Asia/Kolkata",
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: true,
+          }),
+        ],
         phone,
       ),
-     
-    
-    created(res, trip);
+      created(res, trip));
   } catch (error) {
     console.error(error);
     internalError(res, "Failed to request trip");
@@ -116,6 +144,7 @@ export const createTrip = async (req, res) => {
       subscriptionId,
       pickupLocation,
       dropLocation,
+      packageName,
       tripDate,
       tripType,
       services,
@@ -124,7 +153,7 @@ export const createTrip = async (req, res) => {
     } = req.body;
     const phone = req.user?.mobileNumber;
     const customerName = req.user?.name;
-    
+
     const plan = subscriptionId;
     const availability = await checkSubscriptionAvailabilityForTrip(
       subscriptionId,
@@ -155,17 +184,40 @@ export const createTrip = async (req, res) => {
         })),
       },
     });
-    const tripId = trip.id?trip.id:"";
+    const tripId = trip.id ? trip.id : "";
 
     deductSubscriptionUsageForTrip(trip); // Deduct usage immediately for admin-created trips
+    // Validation
+    if (
+      !packageName ||
+      typeof packageName !== "string" ||
+      packageName.trim() === ""
+    ) {
+      return unprocessable(res, "packageName is required");
+    }
 
-    sendWhatsAppTemplate({
-        to: phone,
-        // templateName: "trip_create",
-        templateName:"new_assignment_creation_2",
-        templateParams: [customerName, plan, tripId, new Date().toISOString()],
-      }),
-    created(res, trip);
+    (
+      sendWhatsAppTemplate({
+      to: phone,
+      templateName: "trip_confirmed_client",
+
+      templateParams: [
+        customerName,
+        plan,
+        packageName,
+        tripId,
+        new Date().toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+      ],
+    }),
+      created(res, trip));
   } catch (error) {
     console.error(error);
     internalError(res, "Failed to create trip");
@@ -175,12 +227,32 @@ export const createTrip = async (req, res) => {
 export const approveTrip = async (req, res) => {
   try {
     const { id } = req.params;
-    const { assignmentId } = req.body;
+    const { assignmentId,customerName,plan,packageName,tripId,phone } = req.body;
 
     const trip = await prisma.trip.update({
       where: { id: parseInt(id) },
       data: { status: "confirmed", confirmedBy: req.user.userId, assignmentId },
     });
+     sendWhatsAppTemplate({
+      to: phone,
+      templateName: "trip_confirmed_client",
+
+      templateParams: [
+        customerName,
+        plan,
+        packageName,
+        tripId,
+        new Date().toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        }),
+      ],
+    }),
     ok(res, trip);
   } catch (error) {
     if (error.code === "P2025") {
@@ -226,6 +298,14 @@ export const getTripById = async (req, res) => {
             paymentId: true,
             startDate: true,
             endDate: true,
+            services: true,
+            tripsTotal: true,
+            tripsUsed: true,
+            package: {
+              select: {
+                name: true,
+              },
+            },
           },
         },
       },
@@ -312,7 +392,8 @@ export const updateTrip = async (req, res) => {
         dropLocation,
         tripDate: new Date(tripDate),
         tripType,
-        additionalAmount: additionalAmount !== undefined ? additionalAmount : undefined,
+        additionalAmount:
+          additionalAmount !== undefined ? additionalAmount : undefined,
         services: services.map((service) => ({
           id: service.id,
           name: service.name,

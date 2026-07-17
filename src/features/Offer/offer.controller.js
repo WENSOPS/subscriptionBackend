@@ -29,7 +29,7 @@ export const createOffer = async (req, res) => {
     deadlineNoteBody,
     ctaPrimaryText,
     ctaPrimaryHref,
-    featuredPackageId,
+    featuredPackageIds,
     ctaSecondaryText,
     footerNote,
   } = req.body;
@@ -51,14 +51,14 @@ export const createOffer = async (req, res) => {
 
     const parsedIsActive = isActive !== undefined ? isActive : true;
 
-    if (featuredPackageId) {
-      const parsedFeaturedPackageId = parseInt(featuredPackageId);
-      
-      const packageExists = await prisma.package.findUnique({
-        where: { id: parsedFeaturedPackageId },
-      });
-      if (!packageExists) {
-        return notFound(res, "Featured package not found");
+    if (featuredPackageIds && Array.isArray(featuredPackageIds)) {
+      for (const pId of featuredPackageIds) {
+        const packageExists = await prisma.package.findUnique({
+          where: { id: parseInt(pId) },
+        });
+        if (!packageExists) {
+          return notFound(res, `Featured package with ID ${pId} not found`);
+        }
       }
     }
 
@@ -73,7 +73,10 @@ export const createOffer = async (req, res) => {
     });
 
     if (existingOfferForCategory) {
-      return conflict(res, "Offer already going on in this category. Please make the earlier one inactive first.");
+      return res.status(200).json({
+        success: false,
+        message: "Offer already going on in this category. Please make the earlier one inactive first.",
+      });
     }
 
     const newOffer = await prisma.offer.create({
@@ -95,22 +98,27 @@ export const createOffer = async (req, res) => {
         deadlineNoteBody,
         ctaPrimaryText,
         ctaPrimaryHref,
-        featuredPackageId: featuredPackageId ? parseInt(featuredPackageId) : null,
+        featuredPackages: {
+          connect: featuredPackageIds && Array.isArray(featuredPackageIds)
+            ? featuredPackageIds.map((id) => ({ id: parseInt(id) }))
+            : [],
+        },
         ctaSecondaryText,
         footerNote,
         benefits: {
           create: benefits
             ? benefits.map((b) => ({
-                icon: b.icon,
-                title: b.title,
-                description: b.description,
-                order: b.order || 0,
-              }))
+              icon: b.icon,
+              title: b.title,
+              description: b.description,
+              order: b.order || 0,
+            }))
             : [],
         },
       },
       include: {
         benefits: true,
+        featuredPackages: true,
       },
     });
 
@@ -142,7 +150,7 @@ export const updateOffer = async (req, res) => {
     deadlineNoteBody,
     ctaPrimaryText,
     ctaPrimaryHref,
-    featuredPackageId,
+    featuredPackageIds,
     ctaSecondaryText,
     footerNote,
   } = req.body;
@@ -174,15 +182,16 @@ export const updateOffer = async (req, res) => {
     }
 
     const targetCategory = category !== undefined ? category : currentOffer.category;
-    const targetFeaturedPackageId = featuredPackageId !== undefined ? (featuredPackageId ? parseInt(featuredPackageId) : null) : currentOffer.featuredPackageId;
     const targetIsActive = isActive !== undefined ? isActive : currentOffer.isActive;
 
-    if (targetFeaturedPackageId) {
-      const packageExists = await prisma.package.findUnique({
-        where: { id: targetFeaturedPackageId },
-      });
-      if (!packageExists) {
-        return notFound(res, "Featured package not found");
+    if (featuredPackageIds && Array.isArray(featuredPackageIds)) {
+      for (const pId of featuredPackageIds) {
+        const packageExists = await prisma.package.findUnique({
+          where: { id: parseInt(pId) },
+        });
+        if (!packageExists) {
+          return notFound(res, `Featured package with ID ${pId} not found`);
+        }
       }
     }
 
@@ -199,7 +208,10 @@ export const updateOffer = async (req, res) => {
       });
 
       if (existingOfferForCategory) {
-        return conflict(res, "Offer already going on in this category. Please make the earlier one inactive first.");
+        return res.status(200).json({
+          success: false,
+          message: "Offer already going on in this category. Please make the earlier one inactive first.",
+        });
       }
     }
 
@@ -223,7 +235,9 @@ export const updateOffer = async (req, res) => {
         deadlineNoteBody,
         ctaPrimaryText,
         ctaPrimaryHref,
-        featuredPackageId: featuredPackageId !== undefined ? (featuredPackageId ? parseInt(featuredPackageId) : null) : undefined,
+        featuredPackages: featuredPackageIds !== undefined ? {
+          set: featuredPackageIds ? featuredPackageIds.map((id) => ({ id: parseInt(id) })) : [],
+        } : undefined,
         ctaSecondaryText,
         footerNote,
         ...(benefits && {
@@ -240,6 +254,7 @@ export const updateOffer = async (req, res) => {
       },
       include: {
         benefits: true,
+        featuredPackages: true,
       },
     });
 
@@ -280,7 +295,7 @@ export const getOffer = async (req, res) => {
             order: "asc",
           },
         },
-        featuredPackage: true,
+        featuredPackages: true,
       },
     });
 
@@ -304,7 +319,7 @@ export const getAllOffers = async (req, res) => {
             order: "asc",
           },
         },
-        featuredPackage: true,
+        featuredPackages: true,
       },
     });
     return ok(res, offers, "All offers fetched successfully");
@@ -325,7 +340,7 @@ export const getOfferById = async (req, res) => {
             order: "asc",
           },
         },
-        featuredPackage: true,
+        featuredPackages: true,
       },
     });
 

@@ -59,13 +59,17 @@ model Package {
   description     String?
   tags            String?
   vehicleType     String?
-  vehicleModel    Json? // Store as JSON to allow for multiple models
+  vehicleModel    Json?
   bodyguardType   String?
   trips           Int?
   category        String?
-  validity        Int? // Validity in months
+  validity        Int?
   thumbnailUrlKey String?
   isActive        Boolean  @default(true)
+
+  // ── TipTap rich text ──────────────────────────────────────────
+  termsAndConditions Json?   // stores editor.getJSON() output
+  // ─────────────────────────────────────────────────────────────
 
   packageServices PackageService[]
   packageMedia    PackageMedia[]
@@ -251,44 +255,41 @@ enum BookingStatus {
 }
 model Offer {
   id        Int       @id @default(autoincrement())
-  slug      String    @unique // "founding-fy-2026"
+  slug      String    @unique
 
   isActive  Boolean   @default(true)
-  startDate DateTime?            // 2026-07-01T00:00:00Z
-  endDate   DateTime             // 2026-07-31T23:59:59Z
+  startDate DateTime?
+  endDate   DateTime
 
-  category  String 
+  category  String
 
   alertText String    @default("Access Closes {date} — 11:59 PM IST")
-  eyebrow   String?   // "Financial Year Founding Member Access"
+  eyebrow   String?
 
-  title       String  // "Lock In Founding Rates."
-  titleAccent String? // "Before the FY Window Closes."
+  title       String
+  titleAccent String?
+  description String? @db.Text
 
-  description String? @db.Text // "After {date}, all new members pay the updated price..."
+  countdownLabel String?
+  pricingLabel   String?
 
-  countdownLabel String? // "Time remaining to claim founding rates"
-  pricingLabel   String? // "Current founding rates — valid till {date}"
-
-  benefitsHeading String?        // "What you get as a founding member"
+  benefitsHeading String?
   benefits        OfferBenefit[]
 
-  deadlineNoteStrong String? // "After {date}:"
-  deadlineNoteBody   String? @db.Text // "New memberships will be onboarded at the updated pricing..."
+  deadlineNoteStrong String?
+  deadlineNoteBody   String? @db.Text
 
-  ctaPrimaryText String? // "Claim Founding Rate — {packageName}"
-  ctaPrimaryHref String? // "/booking/premium"
+  ctaPrimaryText String?
+  ctaPrimaryHref String?
 
-  featuredPackageId Int?
-  featuredPackage   Package? @relation(fields: [featuredPackageId], references: [id], onDelete: SetNull)
+  // ── changed: array of packages ──
+  featuredPackages Package[]
 
-  ctaSecondaryText String? // "Ask Concierge →"
-
-  footerNote String? // "wensforce.com · +91-73046 07954 · Founding access closes {date}"
+  ctaSecondaryText String?
+  footerNote       String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
 
   @@map("offers")
 }

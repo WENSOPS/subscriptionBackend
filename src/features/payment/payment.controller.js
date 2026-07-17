@@ -95,7 +95,6 @@ export const createOrder = async (req, res) => {
               : "PENDING",
         },
       });
-      console.log(cashfreeResponse.orderId,"cashfreeorderID")
       // Mark coupon as used within the same transaction
       if (couponId) {
         await tx.coupon.update({
@@ -200,14 +199,13 @@ export const verifyPayment = async (req, res) => {
     where: { cashfreeOrderId: orderId },
     select: { id: true, status: true, amount: true, packageId: true },
   });
-
+  console.log(order)
   if (!order) return notFound(res, "Order not found");
 
-  // Optional: if webhook hasn't arrived yet, fetch from Cashfree as fallback
   if (order.status === "PENDING") {
     const cfResponse = await cashfree.PGFetchOrder(orderId);
     const cfStatus = cfResponse.data.order_status;
-
+    console.log(cfResponse)
     if (cfStatus === "PAID") {
       await prisma.order.update({
         where: { cashfreeOrderId: orderId },
@@ -216,22 +214,37 @@ export const verifyPayment = async (req, res) => {
       order.status = "PAID";
     }
   }
-  await sendWhatsAppTemplate({
-    to: phone,
-    templateName: "new_assignment_creation_2",
-    templateParams: [customerName, null, orderId, new Date().toISOString()],
-  });
 
-  await sendWhatsAppTemplateToBroadcast(
-    "Testing Office",
-    "new_assignment_creation_2",
-    [orderId, customerName, null, new Date().toISOString()],
-    phone,
-  );
+  const formattedDate = new Date().toLocaleString("en-IN", {
+    timeZone: "Asia/Kolkata",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+ 
+  if (order.status === "PAID") {
+    sendWhatsAppTemplate({
+      to: phone,
+      templateName: "payment_confirmed_client",
+      templateParams: [customerName, orderId, order.amount, formattedDate],
+    });
+
+    sendWhatsAppTemplateToBroadcast(
+      "Testing Office",
+      "payment_confirmed_team",
+      [orderId, customerName, order.amount, formattedDate],
+      phone,
+    );
+  }
+
   return ok(res, {
     orderId: order.id,
-    status: order.status, // "PAID" | "FAILED" | "PENDING"
+    status: order.status,
     amount: order.amount,
+    packageId: order.packageId,
   });
 };
 

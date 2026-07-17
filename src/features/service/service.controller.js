@@ -5,7 +5,7 @@ import s3Client from "../../config/storage/s3.js";
 
 export const createService = async (req, res) => {
   try {
-    const { title, description, thumbnailUrlKey, isActive } = req.body;
+    const { title, description, thumbnailUrlKey, isActive, price } = req.body;
 
     const newService = await prisma.service.create({
       data: {
@@ -13,6 +13,7 @@ export const createService = async (req, res) => {
         description,
         thumbnailUrlKey,
         isActive,
+        price: price != null ? parseFloat(price) : undefined,
       },
     });
     return res.status(201).json({
@@ -122,7 +123,7 @@ export const getServiceById = async (req, res) => {
 export const updateService = async (req, res) => {
   try {
     const { id } = req.params;
-    const { title, description, thumbnailUrlKey, isActive } = req.body;
+    const { title, description, thumbnailUrlKey, isActive, price } = req.body;
     const updatedService = await prisma.service.update({
       where: { id: parseInt(id) },
       data: {
@@ -130,6 +131,7 @@ export const updateService = async (req, res) => {
         description,
         thumbnailUrlKey,
         isActive,
+        price: price != null ? parseFloat(price) : undefined,
       },
     });
     return res.status(200).json({

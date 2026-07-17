@@ -227,6 +227,7 @@ export const createPackage = async (req, res) => {
     validity,
     thumbnailUrlKey,
     category,
+    termsAndConditions,
     images, // string[] of S3 keys
     videos, // string[] of S3 keys
   } = req.body;
@@ -264,6 +265,7 @@ export const createPackage = async (req, res) => {
         validity,
         thumbnailUrlKey,
         category,
+        ...(termsAndConditions !== undefined && { termsAndConditions }),
         packageServices: {
           create: services.map((service) => ({
             serviceId: service.id,
@@ -334,11 +336,11 @@ export const createPackage = async (req, res) => {
 
 export const getAllPackagesForUsers = async (req, res) => {
   try {
-    const { category } = req.query;
-    const where = { isActive: true };
-    if (category) {
-      where.category = category;
+    let { category } = req.query;
+    if (!category) {
+      category = "membership";
     }
+    const where = { isActive: true, category };
     const packages = await prisma.package.findMany({
       where,
       include: {
@@ -379,7 +381,8 @@ export const updatePackage = async (req, res) => {
     images,             // newly uploaded image S3 keys
     videos,             // newly uploaded video S3 keys
     existingPhotoKeys,   // kept image S3 keys
-    existingVideoKeys    // kept video S3 keys
+    existingVideoKeys,   // kept video S3 keys
+    termsAndConditions,
   } = req.body;
 
   try {
@@ -432,6 +435,7 @@ export const updatePackage = async (req, res) => {
           create: mediaRecords,
         },
         category,
+        ...(termsAndConditions !== undefined && { termsAndConditions }),
       },
       include: {
         packageServices: {

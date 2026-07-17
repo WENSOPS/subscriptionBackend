@@ -167,6 +167,7 @@ export const getAllSubscriptions = async (req, res) => {
           tripsUsed: true,
           vehicleType: true,
           bodyguardType: true,
+          services: true,
           package: {
             select: {
               id: true,

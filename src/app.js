@@ -10,7 +10,7 @@ import userRoutes from "./features/user/user.route.js";
 import dashboardRoutes from "./features/dashboard/dashboard.routes.js";
 import storageRoutes from "./features/storage/storage.routes.js";
 import bookingRoutes from "./features/booking/booking.routes.js";
-import homepageRoutes from "./features/HomePage/homepage.routes.js";
+import offerRoutes from "./features/Offer/offer.routes.js";
 import adminRoutes from "./features/admin/admin.routes.js";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -46,7 +46,7 @@ app.use("/api/v1/user", userRoutes);
 app.use("/api/v1/dashboard", dashboardRoutes);
 app.use("/api/v1/upload", storageRoutes);
 app.use("/api/v1/booking", bookingRoutes);
-app.use("/api/v1/homepage", homepageRoutes);
+app.use("/api/v1/offer", offerRoutes);
 app.use("/api/v1/admin", adminRoutes);
 
 app.get("/api/v1/health", async (req, res) => {
