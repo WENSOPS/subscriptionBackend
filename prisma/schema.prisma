@@ -63,6 +63,7 @@ model Package {
   bodyguardType   String?
   trips           Int?
   category        String?
+  gst                Float?
   validity        Int?
   thumbnailUrlKey String?
   isActive        Boolean  @default(true)
@@ -137,6 +138,7 @@ model Order {
   finalAmount Float
   couponCode String?
   couponId Int?
+  paidAt DateTime?
   status String
   paymentId String?
   cashfreeOrderId String? @unique
@@ -203,7 +205,7 @@ model Trip {
 model Booking {
   id    Int     @id @default(autoincrement())
   userId Int
-  packageId String // frontend id for now
+  packageId Int // frontend id for now
   packageName String 
   cashfreeOrderId String? @unique
   status BookingStatus @default(initiated)

@@ -44,6 +44,7 @@ export const listServices = async (req, res) => {
       prisma.service.count({ where }),
       prisma.service.findMany({
         where,
+        orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: parseInt(limit),
       }),
@@ -199,6 +200,7 @@ export const servicesNotIncluded = async (req, res) => {
       prisma.service.count({ where }),
       prisma.service.findMany({
         where,
+        orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: parseInt(limit),
       }),

@@ -18,7 +18,7 @@ export const createPaymentValidation = [
     .isInt({ gt: 0 })
     .withMessage("packageId must be a positive integer"),
   body("couponCode")
-    .optional()
+    .optional({ nullable: true })
     .isString()
     .withMessage("couponCode must be a string"),
   validate,

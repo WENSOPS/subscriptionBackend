@@ -313,6 +313,7 @@ export const getOffer = async (req, res) => {
 export const getAllOffers = async (req, res) => {
   try {
     const offers = await prisma.offer.findMany({
+      orderBy: { createdAt: "desc" },
       include: {
         benefits: {
           orderBy: {

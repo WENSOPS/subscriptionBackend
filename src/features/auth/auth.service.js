@@ -8,6 +8,7 @@ const generateAccessAndRefreshTokens = (user) => {
     mobileNumber: user.mobileNumber,
     name: user.name,
   };
+  
   const accessToken = jwt.sign(payload, process.env.ACCESS_TOKEN_SECRET, {
     expiresIn: process.env.ACCESS_TOKEN_EXPIRY || "1h",
   });

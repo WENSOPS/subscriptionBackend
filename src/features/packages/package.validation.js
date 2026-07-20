@@ -35,6 +35,7 @@ export const createPackageValidationRules = () => {
         body("trips").isInt({ gt: 0 }).withMessage("Trips must be a positive integer"),
         body("validity").isInt({ gt: 0 }).withMessage("Validity must be a positive integer"),
         body("thumbnailUrlKey").notEmpty().withMessage("Thumbnail URL key is required"),
+        body("gst").optional({ nullable: true }).isFloat({ min: 0 }).withMessage("GST must be a non-negative float").toFloat(),
 
         body("images")
             .optional()

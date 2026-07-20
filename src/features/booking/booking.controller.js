@@ -60,6 +60,7 @@ export const getBookings = async (req, res) => {
     const [bookings, total] = await Promise.all([
       prisma.booking.findMany({
         where,
+        orderBy: { createdAt: "desc" },
         skip: (pageNum - 1) * limitNum,
         take: limitNum,
         select: {
@@ -103,7 +104,7 @@ export const getMyBookings = async (req, res) => {
         userId,
         status: { notIn: ["initiated", "failed"] },
       },
-      orderBy: { purchaseDate: "desc" },
+      orderBy: { createdAt: "desc" },
     });
     ok(res, bookings);
   } catch (error) {
@@ -211,7 +212,7 @@ export const generateInvoice = async (req, res) => {
     }
 
     if (booking.invoiceKey !== "" && booking.invoiceKey !== null) {
-      
+
       const downloadUrl = await getInvoiceDownloadUrl(booking.invoiceKey, 3600);
       const pdfBuffer = await fetchImageBuffer(downloadUrl); // Reusing image fetch logic for the PDF
 

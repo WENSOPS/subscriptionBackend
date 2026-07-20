@@ -27,13 +27,13 @@ export const getAllUsers = async (req, res) => {
 
     const where = search
       ? {
-          OR: [
-            { name: { contains: search, } },
-            { email: { contains: search, } },
-            { mobileNumber: { contains: search, } },
-            { city: { contains: search, } },
-          ],
-        }
+        OR: [
+          { name: { contains: search, } },
+          { email: { contains: search, } },
+          { mobileNumber: { contains: search, } },
+          { city: { contains: search, } },
+        ],
+      }
       : {};
 
     const parsedLimit = limit ? parseInt(limit) : 10;
@@ -42,6 +42,7 @@ export const getAllUsers = async (req, res) => {
     const [users, totalUsers] = await Promise.all([
       prisma.user.findMany({
         where,
+        orderBy: { createdAt: "desc" },
         take: parsedLimit,
         skip: (parsedPage - 1) * parsedLimit,
         select: {

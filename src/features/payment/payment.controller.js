@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
-import { createCashfreeOrder } from "./payment.service.js";
+import { createCashfreeOrder, calculateGST, ensureSubscriptionCreated } from "./payment.service.js";
 import {
   accepted,
   badRequest,
@@ -19,7 +19,6 @@ const CF_BASE_URL = "https://sandbox.cashfree.com"; // sandbox url
 export const createOrder = async (req, res) => {
   const { packageId, couponCode } = req.body;
   const userId = req.user.userId;
-  console.log(req.user);
 
   // ── Input validation ──────────────────────────────────────────
   const parsedPackageId = parseInt(packageId, 10);
@@ -55,9 +54,11 @@ export const createOrder = async (req, res) => {
     }
 
     // ── Calculate final amount (never go below ₹1) ────────────────
+    const baseAmount = packageData.discountedPrice - discountAmount;
+    const { gstAmount } = calculateGST(packageData.gst, baseAmount);
     const orderAmount = Math.max(
       1,
-      packageData.discountedPrice - discountAmount,
+      baseAmount + gstAmount,
     );
 
     const orderId = `WENS_${packageId}_${Date.now()}`;
@@ -89,10 +90,11 @@ export const createOrder = async (req, res) => {
           couponId: couponId || null,
           cashfreeOrderId: cashfreeResponse.orderId,
           paymentId: cashfreeResponse.paymentSessionId,
-          status:
-            req.user.role === "admin" || req.user.role === "ops"
-              ? "ACTIVE"
-              : "PENDING",
+          // status:
+          //   req.user.role === "admin" || req.user.role === "ops"
+          //     ? "ACTIVE"
+          //     : "PENDING",
+          status:"PENDING",
         },
       });
       // Mark coupon as used within the same transaction
@@ -126,118 +128,83 @@ export const createOrder = async (req, res) => {
   }
 };
 
-export const handleWebhook = async (req, res) => {
-  try {
-    const signature = req.headers["x-webhook-signature"];
-    const timestamp = req.headers["x-webhook-timestamp"];
-
-    // Cashfree needs the raw body string for signature verification
-    // Make sure this route uses express.raw(), not express.json()
-    const rawBody = req.body.toString("utf8");
-
-    const isValid = cashfree.PGVerifyWebhookSignature(
-      signature,
-      rawBody,
-      timestamp,
-    );
-    if (!isValid) {
-      return badRequest(res, "Invalid signature");
-    }
-
-    const event = JSON.parse(rawBody);
-
-    if (event.type === "PAYMENT_SUCCESS_WEBHOOK") {
-      const cashfreeOrderId = event.data.order.order_id; // this is your DB order id
-
-      try {
-        // Update order directly, will throw if not found
-        const updatedOrder = await prisma.order.update({
-          where: { cashfreeOrderId: cashfreeOrderId },
-          data: { status: "PAID", paidAt: new Date() },
-        });
-
-        // create the subscription here instant
-        const subscription = await createSubscription(
-          updatedOrder.userId,
-          updatedOrder.packageId,
-          new Date(),
-          new Date(new Date().setMonth(new Date().getMonth() + 1)), // TODO: calculate endDate based on package duration
-          updatedOrder.amount,
-          updatedOrder.couponCode,
-          updatedOrder.couponId,
-          updatedOrder.paymentId,
-        );
-      } catch (error) {
-        if (error.code === "P2025") {
-          return notFound(res, "Order not found");
-        }
-        throw error;
-      }
-    }
-
-    if (event.type === "PAYMENT_FAILED_WEBHOOK") {
-      const cashfreeOrderId = event.data.order.order_id;
-      await prisma.order.update({
-        where: { cashfreeOrderId: cashfreeOrderId },
-        data: { status: "FAILED" },
-      });
-    }
-
-    return ok(res, { success: true }); // always 200, or Cashfree retries
-  } catch (err) {
-    console.error("[webhook] Error:", err);
-    return internalError(res, "Failed to process webhook");
-  }
-};
-
 export const verifyPayment = async (req, res) => {
   const { orderId } = req.params;
   const phone = req.user?.mobileNumber;
-  const customerName = req.user?.name;
 
   const order = await prisma.order.findUnique({
     where: { cashfreeOrderId: orderId },
-    select: { id: true, status: true, amount: true, packageId: true },
+    select: {
+      id: true,
+      status: true,
+      amount: true,
+      packageId: true,
+      userId: true,
+      user: {
+        select: { name: true }
+      }
+    },
   });
-  console.log(order)
-  if (!order) return notFound(res, "Order not found");
+
+  if (!order) {
+    return notFound(res, "Order not found");
+  }
+
+  const customerName = order.user?.name;
+
+  if (order.status === "PAID") {
+    return ok(res, {
+      orderId: order.id,
+      status: order.status,
+      amount: order.amount,
+      packageId: order.packageId,
+    });
+  }
 
   if (order.status === "PENDING") {
     const cfResponse = await cashfree.PGFetchOrder(orderId);
     const cfStatus = cfResponse.data.order_status;
-    console.log(cfResponse)
+
     if (cfStatus === "PAID") {
       await prisma.order.update({
         where: { cashfreeOrderId: orderId },
         data: { status: "PAID", paidAt: new Date() },
       });
       order.status = "PAID";
+
+      const formattedDate = new Date().toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+
+      sendWhatsAppTemplate({
+        to: phone,
+        templateName: "payment_confirmed_client",
+        templateParams: [customerName, orderId, order.amount, formattedDate],
+      });
+
+      sendWhatsAppTemplateToBroadcast(
+        "Testing Office",
+        "payment_confirmed_team",
+        [orderId, customerName, order.amount, formattedDate],
+        phone,
+      );
+
+      try {
+        await ensureSubscriptionCreated({
+          userId: order.userId,
+          packageId: order.packageId,
+          paymentId: orderId,
+        });
+      } catch (subErr) {
+        console.error("[verifyPayment] Error creating subscription:", subErr);
+      }
     }
-  }
-
-  const formattedDate = new Date().toLocaleString("en-IN", {
-    timeZone: "Asia/Kolkata",
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
- 
-  if (order.status === "PAID") {
-    sendWhatsAppTemplate({
-      to: phone,
-      templateName: "payment_confirmed_client",
-      templateParams: [customerName, orderId, order.amount, formattedDate],
-    });
-
-    sendWhatsAppTemplateToBroadcast(
-      "Testing Office",
-      "payment_confirmed_team",
-      [orderId, customerName, order.amount, formattedDate],
-      phone,
-    );
   }
 
   return ok(res, {
@@ -246,6 +213,113 @@ export const verifyPayment = async (req, res) => {
     amount: order.amount,
     packageId: order.packageId,
   });
+};
+
+
+export const handleWebhook = async (req, res) => {
+  try {
+    const signature = req.headers["x-webhook-signature"];
+    const timestamp = req.headers["x-webhook-timestamp"];
+
+    const rawBody = req.body.toString("utf8");
+
+    const isValid = cashfree.PGVerifyWebhookSignature(signature, rawBody, timestamp);
+
+    if (!isValid) {
+      return badRequest(res, "Invalid signature");
+    }
+
+    const event = JSON.parse(rawBody);
+    
+
+    if (event.type === "PAYMENT_SUCCESS_WEBHOOK") {
+      const cashfreeOrderId = event.data.order.order_id;
+
+      try {
+        const existingOrder = await prisma.order.findUnique({
+          where: { cashfreeOrderId },
+          select: {
+            id: true,
+            status: true,
+            amount: true,
+            packageId: true,
+            userId: true,
+            user: {
+              select: { name: true, mobileNumber: true }
+            }
+          },
+        });
+
+        if (!existingOrder) {
+          return notFound(res, "Order not found");
+        }
+
+        // Already processed, nothing to do
+        if (existingOrder.status === "PAID") {
+          return ok(res, { success: true });
+        }
+
+        const updatedOrder = await prisma.order.update({
+          where: { cashfreeOrderId },
+          data: { status: "PAID", paidAt: new Date() },
+        });
+
+        const customerName = existingOrder.user?.name;
+        const phone = existingOrder.user?.mobileNumber;
+
+        const formattedDate = new Date().toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
+        });
+
+        sendWhatsAppTemplate({
+          to: phone,
+          templateName: "payment_confirmed_client",
+          templateParams: [customerName, cashfreeOrderId, existingOrder.amount, formattedDate],
+        });
+
+        sendWhatsAppTemplateToBroadcast(
+          "Testing Office",
+          "payment_confirmed_team",
+          [cashfreeOrderId, customerName, existingOrder.amount, formattedDate],
+          phone,
+        );
+
+         ensureSubscriptionCreated({
+          userId: updatedOrder.userId,
+          packageId: updatedOrder.packageId,
+          paymentId: cashfreeOrderId,
+        });
+
+      } catch (error) {
+        console.error("[webhook] Error during PAYMENT_SUCCESS handling:", error);
+        console.error("[webhook] Error code:", error.code);
+        if (error.code === "P2025") {
+          return notFound(res, "Order not found");
+        }
+        throw error;
+      }
+
+    } else if (event.type === "PAYMENT_FAILED_WEBHOOK") {
+      const cashfreeOrderId = event.data.order.order_id;
+
+      await prisma.order.update({
+        where: { cashfreeOrderId },
+        data: { status: "FAILED" },
+      });
+    }
+
+    return ok(res, { success: true });
+
+  } catch (err) {
+    console.error("[webhook] Unhandled error:", err);
+    return internalError(res, "Failed to process webhook");
+  }
 };
 
 export const getAllPayments = async (req, res) => {
@@ -304,6 +378,7 @@ export const getAllPayments = async (req, res) => {
             },
           },
         },
+        orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: parseInt(limit),
       }),

@@ -1,117 +1,125 @@
 import { prisma } from "../../lib/prisma.js";
 
 export const deductSubscriptionUsageForTrip = async (trip) => {
-	if (!trip?.subscriptionId) {
-		return;
-	}
+  if (!trip?.subscriptionId) {
+    return;
+  }
 
-	const subscription = await prisma.subscription.findUnique({
-		where: { id: trip.subscriptionId },
-	});
+  const subscription = await prisma.subscription.findUnique({
+    where: { id: trip.subscriptionId },
+  });
 
-	if (!subscription || subscription.tripsUsed >= subscription.tripsTotal) {
-		return;
-	}
+  if (!subscription || subscription.tripsUsed >= subscription.tripsTotal) {
+    return;
+  }
 
-	const updatedServices = (subscription.services || []).map((service) => {
-		const match = (trip.services || []).find((tripService) => tripService.id === service.id);
-		return match ? { ...service, count: service.count - 1 } : service;
-	});
+  const updatedServices = (subscription.services || []).map((service) => {
+    const match = (trip.services || []).find(
+      (tripService) => tripService.id === service.id,
+    );
+    return match ? { ...service, count: service.count - 1 } : service;
+  });
 
-	await prisma.subscription.update({
-		where: { id: subscription.id },
-		data: {
-			tripsUsed: subscription.tripsUsed + 1,
-			services: updatedServices,
-		},
-	});
+  await prisma.subscription.update({
+    where: { id: subscription.id },
+    data: {
+      tripsUsed: subscription.tripsUsed + 1,
+      services: updatedServices,
+    },
+  });
 };
 
 export const checkSubscriptionAvailabilityForTrip = async (
-	subscriptionId,
-	selectedServices = [],
-	userId = null
+  subscriptionId,
+  selectedServices = [],
+  userId = null,
 ) => {
-	const parsedSubscriptionId = parseInt(subscriptionId, 10);
-	if (Number.isNaN(parsedSubscriptionId)) {
-		return {
-			ok: false,
-			message: "Invalid subscription id",
-			code: "INVALID_SUBSCRIPTION_ID",
-		};
-	}
+  const parsedSubscriptionId = parseInt(subscriptionId, 10);
+  if (Number.isNaN(parsedSubscriptionId)) {
+    return {
+      ok: false,
+      message: "Invalid subscription id",
+      code: "INVALID_SUBSCRIPTION_ID",
+    };
+  }
 
-	const subscription = await prisma.subscription.findUnique({
-		where: { id: parsedSubscriptionId },
-	});
+  const subscription = await prisma.subscription.findUnique({
+    where: { id: parsedSubscriptionId },
+  });
 
-	if (!subscription) {
-		return {
-			ok: false,
-			message: "Subscription not found",
-			code: "SUBSCRIPTION_NOT_FOUND",
-		};
-	}
+  if (!subscription) {
+    return {
+      ok: false,
+      message: "Subscription not found",
+      code: "SUBSCRIPTION_NOT_FOUND",
+    };
+  }
 
-	if (subscription.status !== "active") {
-		return {
-			ok: false,
-			message: "Subscription is not active",
-			code: "SUBSCRIPTION_NOT_ACTIVE",
-		};
-	}
+  if (subscription.status !== "active") {
+    return {
+      ok: false,
+      message: "Subscription is not active",
+      code: "SUBSCRIPTION_NOT_ACTIVE",
+    };
+  }
 
-	const tripsTotal = subscription.tripsTotal ?? 0;
-	const tripsUsed = subscription.tripsUsed ?? 0;
-	if (tripsUsed >= tripsTotal) {
-		return {
-			ok: false,
-			message: "No trips available in this subscription",
-			code: "NO_TRIPS_AVAILABLE",
-		};
-	}
+  const tripsTotal = subscription.tripsTotal ?? 0;
+  const tripsUsed = subscription.tripsUsed ?? 0;
+  if (tripsUsed >= tripsTotal) {
+    return {
+      ok: false,
+      message: "No trips available in this subscription",
+      code: "NO_TRIPS_AVAILABLE",
+    };
+  }
 
-	if (userId && subscription.userId !== userId) {
-		return {
-			ok: false,
-			message: "Subscription does not belong to the user",
-			code: "SUBSCRIPTION_NOT_OWNED",
-		};
-	}
+  if (userId && subscription.userId !== userId) {
+    return {
+      ok: false,
+      message: "Subscription does not belong to the user",
+      code: "SUBSCRIPTION_NOT_OWNED",
+    };
+  }
 
-	const subscriptionServices = Array.isArray(subscription.services)
-		? subscription.services
-		: [];
-	const requestedServices = Array.isArray(selectedServices) ? selectedServices : [];
+  const subscriptionServices = Array.isArray(subscription.services)
+    ? subscription.services
+    : [];
+  const requestedServices = Array.isArray(selectedServices)
+    ? selectedServices
+    : [];
 
-	const unavailableServices = requestedServices
-		.map((service) => ({
-			id: parseInt(service?.id, 10),
-			name: service?.name,
-		}))
-		.filter((service) => {
-			if (Number.isNaN(service.id)) {
-				return true;
-			}
+  const unavailableServices = requestedServices
+    .map((service) => ({
+      id: parseInt(service?.id, 10),
+      name: service?.name,
+    }))
+    .filter((service) => {
+      if (Number.isNaN(service.id)) {
+        return true;
+      }
 
-			const matchedService = subscriptionServices.find(
-				(subscriptionService) => parseInt(subscriptionService?.id, 10) === service.id
-			);
+      const matchedService = subscriptionServices.find(
+        (subscriptionService) =>
+          parseInt(subscriptionService?.id, 10) === service.id,
+      );
+      
+      if (!matchedService) {
+        return false;
+      }
+      return (matchedService.count ?? 0) <= 0;
+    });
+  
+  if (unavailableServices.length > 0) {
+    return {
+      ok: false,
+      message: "Some selected services are not available",
+      code: "SERVICES_NOT_AVAILABLE",
+      unavailableServices,
+    };
+  }
 
-			return !matchedService || (matchedService.count ?? 0) <= 0;
-		});
-
-	if (unavailableServices.length > 0) {
-		return {
-			ok: false,
-			message: "Some selected services are not available",
-			code: "SERVICES_NOT_AVAILABLE",
-			unavailableServices,
-		};
-	}
-
-	return {
-		ok: true,
-		subscription,
-	};
+  return {
+    ok: true,
+    subscription,
+  };
 };

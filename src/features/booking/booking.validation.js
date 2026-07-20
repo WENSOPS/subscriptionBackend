@@ -9,7 +9,7 @@ const validate = (req, res, next) => {
 };
 
 export const createBookingValidation = [
-  body('packageId').notEmpty().withMessage('Package ID is required'),
+  body('packageId').isInt({ gt: 0 }).withMessage('Package ID must be a positive integer'),
   body('packageName').isString().withMessage('Package name must be a string'),
   body('purchaseDate').isISO8601().toDate().withMessage('Purchase date must be a valid date'),
   body('validity').isString().withMessage('Validity must be a string'),

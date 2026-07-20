@@ -77,6 +77,7 @@ export const getAllPackages = async (req, res) => {
       prisma.package.count({ where }),
       prisma.package.findMany({
         where,
+        orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: parseInt(limit),
         include: {
@@ -227,6 +228,7 @@ export const createPackage = async (req, res) => {
     validity,
     thumbnailUrlKey,
     category,
+    gst,
     termsAndConditions,
     images, // string[] of S3 keys
     videos, // string[] of S3 keys
@@ -262,6 +264,7 @@ export const createPackage = async (req, res) => {
         vehicleModel,
         bodyguardType,
         trips,
+        gst,
         validity,
         thumbnailUrlKey,
         category,
@@ -383,6 +386,7 @@ export const updatePackage = async (req, res) => {
     existingPhotoKeys,   // kept image S3 keys
     existingVideoKeys,   // kept video S3 keys
     termsAndConditions,
+    gst,
   } = req.body;
 
   try {
@@ -421,6 +425,7 @@ export const updatePackage = async (req, res) => {
         bodyguardType,
         discountedPrice,
         thumbnailUrlKey,
+        gst,
         ...(services && {
           packageServices: {
             deleteMany: {},

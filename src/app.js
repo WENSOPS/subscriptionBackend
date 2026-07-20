@@ -17,7 +17,7 @@ import cookieParser from "cookie-parser";
 import axios from "axios";
 
 const app = express();
-
+app.use("/api/v1/payment/webhook", express.raw({ type: "application/json" }));
 app.use(express.json());
 app.use(cookieParser());
 

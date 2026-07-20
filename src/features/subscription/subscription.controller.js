@@ -24,20 +24,21 @@ export const getMySubscription = async (req, res) => {
   const userId = req.user?.userId;
   try {
     const subscriptions = await prisma.subscription.findMany({
-      where: { userId, status: "active" },
+      where: { userId, status: { in: ["active", "pending"] } },
       include: { package: true },
+      orderBy: { createdAt: "desc" },
     });
 
     if (!subscriptions.length) {
-      return notFound(res, "No active subscription found");
+      return ok(res, []);
     }
 
     for (const subscription of subscriptions) {
       subscription.package.thumbnailUrl = subscription.package?.thumbnailUrlKey
         ? await getSignedUrl(S3Client, new GetObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: subscription.package.thumbnailUrlKey,
-          }))
+          Bucket: process.env.S3_BUCKET,
+          Key: subscription.package.thumbnailUrlKey,
+        }))
         : null;
     }
 
@@ -67,9 +68,9 @@ export const getMySubscriptionHistory = async (req, res) => {
     for (const subscription of subscriptions) {
       const thumbnailUrl = subscription.package?.thumbnailUrlKey
         ? await getSignedUrl(S3Client, new GetObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: subscription.package.thumbnailUrlKey,
-          }))
+          Bucket: process.env.S3_BUCKET,
+          Key: subscription.package.thumbnailUrlKey,
+        }))
         : null;
 
       subscription.package.thumbnailUrl = thumbnailUrl;
@@ -135,12 +136,12 @@ export const getSubscriptionById = async (req, res) => {
     }
     const thumbnailUrl = subscription.package?.thumbnailUrlKey
       ? await getSignedUrl(
-          s3Client,
-          new GetObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: subscription.package?.thumbnailUrlKey,
-          })
-        )
+        s3Client,
+        new GetObjectCommand({
+          Bucket: process.env.S3_BUCKET,
+          Key: subscription.package?.thumbnailUrlKey,
+        })
+      )
       : null;
 
     subscription.package.thumbnailUrl = thumbnailUrl;
@@ -199,6 +200,7 @@ export const getAllSubscriptions = async (req, res) => {
             },
           ],
         },
+        orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: parseInt(limit),
       }),

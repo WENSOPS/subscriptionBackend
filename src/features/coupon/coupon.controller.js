@@ -21,6 +21,7 @@ export const getAllCoupons = async (req, res) => {
             contains: search,
           },
         },
+        orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: parseInt(limit),
       }),
