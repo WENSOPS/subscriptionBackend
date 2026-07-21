@@ -47,9 +47,14 @@ export const requestTrip = async (req, res) => {
       req.user.userId,
     );
     if (!availability.ok) {
-      return unprocessable(res, availability.message, {
-        code: availability.code,
-        unavailableServices: availability.unavailableServices || [],
+      return res.status(200).json({
+        success: false,
+        statusCode: 200,
+        message: availability.message,
+        errors: {
+          code: availability.code,
+          unavailableServices: availability.unavailableServices || [],
+        },
       });
     }
 
@@ -148,6 +153,7 @@ export const createTrip = async (req, res) => {
       tripDate,
       tripType,
       services,
+      additionalServices,
       userId,
       additionalAmount,
     } = req.body;
@@ -166,6 +172,11 @@ export const createTrip = async (req, res) => {
       });
     }
 
+    const combinedServices = [
+      ...(Array.isArray(services) ? services : []),
+      ...(Array.isArray(additionalServices) ? additionalServices : []),
+    ];
+
     const trip = await prisma.trip.create({
       data: {
         assignmentId,
@@ -178,7 +189,7 @@ export const createTrip = async (req, res) => {
         createdBy: req.user.userId,
         userId,
         additionalAmount: additionalAmount !== undefined ? additionalAmount : 0,
-        services: services.map((service) => ({
+        services: combinedServices.map((service) => ({
           id: service.id,
           name: service.name,
         })),
@@ -186,7 +197,7 @@ export const createTrip = async (req, res) => {
     });
     const tripId = trip.id ? trip.id : "";
 
-    deductSubscriptionUsageForTrip(trip); // Deduct usage immediately for admin-created trips
+    await deductSubscriptionUsageForTrip(trip); // Deduct usage immediately for admin-created trips
     // Validation
     if (
       !packageName ||
@@ -196,8 +207,7 @@ export const createTrip = async (req, res) => {
       return unprocessable(res, "packageName is required");
     }
 
-    (
-      sendWhatsAppTemplate({
+    (sendWhatsAppTemplate({
       to: phone,
       templateName: "trip_confirmed_client",
 
@@ -227,13 +237,44 @@ export const createTrip = async (req, res) => {
 export const approveTrip = async (req, res) => {
   try {
     const { id } = req.params;
-    const { assignmentId,customerName,plan,packageName,tripId,phone } = req.body;
+    const { assignmentId, customerName, plan, packageName, tripId, phone } =
+      req.body;
+
+    const existingTrip = await prisma.trip.findUnique({
+      where: { id: parseInt(id) },
+    });
+
+    if (!existingTrip) {
+      return notFound(res, "Trip not found");
+    }
+
+    if (existingTrip.status !== "requested") {
+      return badRequest(
+        res,
+        `Trip status is ${existingTrip.status}, only requested trips can be approved.`,
+      );
+    }
+
+    // Check subscription availability
+    const availability = await checkSubscriptionAvailabilityForTrip(
+      existingTrip.subscriptionId,
+      existingTrip.services,
+    );
+    if (!availability.ok) {
+      return unprocessable(res, availability.message, {
+        code: availability.code,
+        unavailableServices: availability.unavailableServices || [],
+      });
+    }
 
     const trip = await prisma.trip.update({
       where: { id: parseInt(id) },
       data: { status: "confirmed", confirmedBy: req.user.userId, assignmentId },
     });
-     sendWhatsAppTemplate({
+
+    await deductSubscriptionUsageForTrip(trip);
+
+    (sendWhatsAppTemplate({
       to: phone,
       templateName: "trip_confirmed_client",
 
@@ -253,7 +294,7 @@ export const approveTrip = async (req, res) => {
         }),
       ],
     }),
-    ok(res, trip);
+      ok(res, trip));
   } catch (error) {
     if (error.code === "P2025") {
       return notFound(res, "Trip not found");
@@ -381,8 +422,15 @@ export const updateTrip = async (req, res) => {
       tripDate,
       tripType,
       services,
+      additionalServices,
       additionalAmount,
     } = req.body;
+
+    const combinedServices = [
+      ...(Array.isArray(services) ? services : []),
+      ...(Array.isArray(additionalServices) ? additionalServices : []),
+    ];
+
     const trip = await prisma.trip.update({
       where: { id: parseInt(id) },
       data: {
@@ -394,7 +442,7 @@ export const updateTrip = async (req, res) => {
         tripType,
         additionalAmount:
           additionalAmount !== undefined ? additionalAmount : undefined,
-        services: services.map((service) => ({
+        services: combinedServices.map((service) => ({
           id: service.id,
           name: service.name,
         })),
@@ -438,8 +486,6 @@ export const markCompleted = async (req, res) => {
     if (trip.status === "completed") {
       return badRequest(res, "Trip is already marked as completed");
     }
-
-    await deductSubscriptionUsageForTrip(trip);
 
     const updatedTrip = await prisma.trip.update({
       where: { id: parseInt(id) },

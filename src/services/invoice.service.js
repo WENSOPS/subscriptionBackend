@@ -1,13 +1,13 @@
-import { generateInvoicePDF }    from "./pdf.service.js";
+import { generateInvoicePDF } from "./pdf.service.js";
 import { uploadInvoiceToS3 } from "./s3.service.js";
-import { sendInvoiceEmail }      from "./mail.service.js";
+import { sendInvoiceEmail } from "./mail.service.js";
 import { generateInvoiceNumber } from "../utils/invoiceHelpers.js";
 import { fileURLToPath } from "url";
 import path from "path";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ASSETS    = path.resolve(__dirname, "../../assets");
-    
+const ASSETS = path.resolve(__dirname, "../../assets");
+
 /**
  * Full invoice pipeline:
  *  1. Build invoice data
@@ -27,12 +27,12 @@ const ASSETS    = path.resolve(__dirname, "../../assets");
  */
 async function processInvoice(booking) {
   const invoiceNumber = generateInvoiceNumber();
-  const invoiceDate   = new Date().toISOString();
+  const invoiceDate = new Date().toISOString();
 
   // Calculate total for email summary
   const subtotal = booking.lineItems.reduce(
     (sum, item) => sum + item.quantity * item.unitPrice,
-    0
+    0,
   );
   const total = subtotal + subtotal * (booking.taxRate ?? 0);
 
@@ -41,16 +41,16 @@ async function processInvoice(booking) {
     invoiceDate,
     customer: booking.customer,
     company: {
-      name:    "WENS FORCE INTERNATIONAL PVT LTD",
-      email:   process.env.MAIL_USER,
+      name: "WENS FORCE INTERNATIONAL PVT LTD",
+      email: process.env.MAIL_USER,
       address: "Empire Building, 2nd Floor, Fort, Mumbai - 400001",
-      mobile:  "+91 7304607954",
+      mobile: "+91 7304607954",
       website: "https://subscription.wensforce.com",
-      logo:    path.join(ASSETS, "logo.png"),
+      logo: path.join(ASSETS, "logo.png"),
       stampImage: path.join(ASSETS, "stamp.png"),
     },
     lineItems: booking.lineItems,
-    taxRate:   booking.taxRate ?? 0,
+    taxRate: booking.taxRate ?? 0,
   };
 
   // Step 1 — Generate PDF in memory
@@ -64,17 +64,16 @@ async function processInvoice(booking) {
   // Step 3 — Send email
   console.log(`📧 Sending invoice email to ${booking.customer.email}...`);
   await sendInvoiceEmail({
-    toEmail:       booking.customer.email,
-    toName:        booking.customer.name,
+    toEmail: booking.customer.email,
+    toName: booking.customer.name,
     invoiceNumber,
-    serviceName:   booking.lineItems[0]?.name ?? "Service",
+    serviceName: booking.lineItems[0]?.name ?? "Service",
     total,
-    pdfBuffer,     // attached directly to the email
+    pdfBuffer, // attached directly to the email
     currency: booking.lineItems[0]?.currency ?? "INR",
   });
 
   return { invoiceNumber, s3Key };
-
 }
 
 export { processInvoice };

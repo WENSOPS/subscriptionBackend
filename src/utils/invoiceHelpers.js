@@ -5,7 +5,7 @@
 function generateInvoiceNumber() {
   const date = new Date();
   const datePart = date.toISOString().slice(0, 10).replace(/-/g, ""); // 20240615
-  const randomPart = Math.floor(1000 + Math.random() * 9000);          // 4 digit random
+  const randomPart = Math.floor(1000 + Math.random() * 9000); // 4 digit random
   return `INV-${datePart}-${randomPart}`;
 }
 
@@ -20,6 +20,5 @@ function formatCurrency(amount, currency = "USD") {
     currency,
   }).format(amount);
 }
-
 
 export { generateInvoiceNumber, formatCurrency };

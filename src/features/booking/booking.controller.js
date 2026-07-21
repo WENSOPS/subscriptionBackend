@@ -212,7 +212,6 @@ export const generateInvoice = async (req, res) => {
     }
 
     if (booking.invoiceKey !== "" && booking.invoiceKey !== null) {
-
       const downloadUrl = await getInvoiceDownloadUrl(booking.invoiceKey, 3600);
       const pdfBuffer = await fetchImageBuffer(downloadUrl); // Reusing image fetch logic for the PDF
 

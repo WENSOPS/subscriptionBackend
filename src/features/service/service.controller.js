@@ -56,13 +56,13 @@ export const listServices = async (req, res) => {
         ...service,
         thumbnailUrl: service.thumbnailUrlKey
           ? await getSignedUrl(
-            s3Client,
-            new GetObjectCommand({
-              Bucket: process.env.S3_BUCKET,
-              Key: service.thumbnailUrlKey,
-            }),
-            { expiresIn: 3600 }, // 1 hour
-          )
+              s3Client,
+              new GetObjectCommand({
+                Bucket: process.env.S3_BUCKET,
+                Key: service.thumbnailUrlKey,
+              }),
+              { expiresIn: 3600 }, // 1 hour
+            )
           : null,
       })),
     );
@@ -100,13 +100,13 @@ export const getServiceById = async (req, res) => {
     }
     const thumbnailUrl = service.thumbnailUrlKey
       ? await getSignedUrl(
-        s3Client,
-        new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: service.thumbnailUrlKey,
-        }),
-        { expiresIn: 3600 }, // 1 hour
-      )
+          s3Client,
+          new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: service.thumbnailUrlKey,
+          }),
+          { expiresIn: 3600 }, // 1 hour
+        )
       : null;
     return res.status(200).json({
       success: true,
@@ -211,13 +211,13 @@ export const servicesNotIncluded = async (req, res) => {
         ...service,
         thumbnailUrl: service.thumbnailUrlKey
           ? await getSignedUrl(
-            s3Client,
-            new GetObjectCommand({
-              Bucket: process.env.S3_BUCKET,
-              Key: service.thumbnailUrlKey,
-            }),
-            { expiresIn: 3600 },
-          )
+              s3Client,
+              new GetObjectCommand({
+                Bucket: process.env.S3_BUCKET,
+                Key: service.thumbnailUrlKey,
+              }),
+              { expiresIn: 3600 },
+            )
           : null,
       })),
     );
@@ -242,4 +242,3 @@ export const servicesNotIncluded = async (req, res) => {
     });
   }
 };
-

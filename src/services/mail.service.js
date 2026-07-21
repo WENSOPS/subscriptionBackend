@@ -52,7 +52,13 @@ async function sendInvoiceEmail({
 /**
  * Builds the HTML body for the invoice email.
  */
-function buildEmailHTML({ toName, invoiceNumber, serviceName, total, currency }) {
+function buildEmailHTML({
+  toName,
+  invoiceNumber,
+  serviceName,
+  total,
+  currency,
+}) {
   return `
 <!DOCTYPE html>
 <html>

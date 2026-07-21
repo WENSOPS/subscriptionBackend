@@ -9,21 +9,26 @@ export const deductSubscriptionUsageForTrip = async (trip) => {
     where: { id: trip.subscriptionId },
   });
 
-  if (!subscription || subscription.tripsUsed >= subscription.tripsTotal) {
+  if (
+    !subscription ||
+    (subscription.tripsUsed ?? 0) >= (subscription.tripsTotal ?? 0)
+  ) {
     return;
   }
 
   const updatedServices = (subscription.services || []).map((service) => {
     const match = (trip.services || []).find(
-      (tripService) => tripService.id === service.id,
+      (tripService) => Number(tripService.id) === Number(service.id),
     );
-    return match ? { ...service, count: service.count - 1 } : service;
+    return match
+      ? { ...service, count: Math.max(0, (service.count ?? 0) - 1) }
+      : service;
   });
 
   await prisma.subscription.update({
     where: { id: subscription.id },
     data: {
-      tripsUsed: subscription.tripsUsed + 1,
+      tripsUsed: (subscription.tripsUsed ?? 0) + 1,
       services: updatedServices,
     },
   });
@@ -102,13 +107,13 @@ export const checkSubscriptionAvailabilityForTrip = async (
         (subscriptionService) =>
           parseInt(subscriptionService?.id, 10) === service.id,
       );
-      
+
       if (!matchedService) {
         return false;
       }
       return (matchedService.count ?? 0) <= 0;
     });
-  
+
   if (unavailableServices.length > 0) {
     return {
       ok: false,

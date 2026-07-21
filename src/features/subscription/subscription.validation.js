@@ -9,7 +9,6 @@ const validate = (req, res, next) => {
 };
 
 export const createSubscriptionValidation = [
-
   body("userId").isInt().withMessage("User ID must be an integer"),
   body("packageId").isInt().withMessage("Package ID must be an integer"),
   body("startDate")

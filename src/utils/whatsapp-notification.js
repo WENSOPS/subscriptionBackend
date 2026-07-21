@@ -2,7 +2,7 @@ import axios from "axios";
 
 const DOUBLETICK_API_URL =
   "https://public.doubletick.io/whatsapp/message/template";
-  const API_TOKEN = process.env.DOUBLETICK_API_TOKEN;
+const API_TOKEN = process.env.DOUBLETICK_API_TOKEN;
 const BOT_NUMBER = process.env.DOUBLETICK_BOT_NUMBER;
 
 function normalizePhone(phone) {

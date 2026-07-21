@@ -78,6 +78,7 @@ model Package {
   offers          Offer[]
   orders          Order[]
   subscriptions   Subscription[]
+  sequence Int
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -140,6 +141,7 @@ model Order {
   couponId Int?
   paidAt DateTime?
   status String
+  currency String   @default("INR")
   paymentId String?
   cashfreeOrderId String? @unique
   createdAt DateTime @default(now())

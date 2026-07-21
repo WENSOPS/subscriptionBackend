@@ -1,6 +1,11 @@
 import * as XLSX from "xlsx";
 import { prisma } from "../../lib/prisma.js";
-import { ok, badRequest, internalError, successResponse } from "../../utils/response.js";
+import {
+  ok,
+  badRequest,
+  internalError,
+  successResponse,
+} from "../../utils/response.js";
 
 // Helper to parse services string during package import
 function parseServicesString(str) {
@@ -74,7 +79,7 @@ function convertToCSV(array) {
         }
         return valueStr;
       })
-      .join(",")
+      .join(","),
   );
   return [csvHeaders, ...csvRows].join("\r\n");
 }
@@ -83,7 +88,10 @@ export const importData = async (req, res) => {
   try {
     const { target } = req.query;
     if (!target || (target !== "services" && target !== "packages")) {
-      return badRequest(res, "Invalid target. Target must be 'services' or 'packages'.");
+      return badRequest(
+        res,
+        "Invalid target. Target must be 'services' or 'packages'.",
+      );
     }
 
     if (!req.file) {
@@ -123,16 +131,28 @@ export const importData = async (req, res) => {
         const row = data[i];
         const rowNum = i + 1;
 
-        const title = row.title || row.Title || row.serviceTitle || row.service_title;
+        const title =
+          row.title || row.Title || row.serviceTitle || row.service_title;
         const description = row.description || row.Description || null;
-        const priceVal = row.price !== undefined ? row.price : (row.Price !== undefined ? row.Price : 100);
-        const isActiveVal = row.isActive !== undefined ? row.isActive : (row.IsActive !== undefined ? row.IsActive : true);
-        const thumbnailUrlKey = row.thumbnailUrlKey || row.ThumbnailUrlKey || null;
+        const priceVal =
+          row.price !== undefined
+            ? row.price
+            : row.Price !== undefined
+              ? row.Price
+              : 100;
+        const isActiveVal =
+          row.isActive !== undefined
+            ? row.isActive
+            : row.IsActive !== undefined
+              ? row.IsActive
+              : true;
+        const thumbnailUrlKey =
+          row.thumbnailUrlKey || row.ThumbnailUrlKey || null;
 
         if (!title || typeof title !== "string" || !title.trim()) {
           return badRequest(
             res,
-            `Validation error at row ${rowNum}: Title is required and must be a non-empty string.`
+            `Validation error at row ${rowNum}: Title is required and must be a non-empty string.`,
           );
         }
 
@@ -140,14 +160,15 @@ export const importData = async (req, res) => {
         if (isNaN(price) || price < 0) {
           return badRequest(
             res,
-            `Validation error at row ${rowNum}: Price must be a positive number.`
+            `Validation error at row ${rowNum}: Price must be a positive number.`,
           );
         }
 
         let isActive = true;
         if (typeof isActiveVal === "string") {
           const val = isActiveVal.toLowerCase().trim();
-          isActive = val === "true" || val === "yes" || val === "1" || val === "active";
+          isActive =
+            val === "true" || val === "yes" || val === "1" || val === "active";
         } else {
           isActive = Boolean(isActiveVal);
         }
@@ -157,7 +178,9 @@ export const importData = async (req, res) => {
           description: description ? String(description).trim() : null,
           price,
           isActive,
-          thumbnailUrlKey: thumbnailUrlKey ? String(thumbnailUrlKey).trim() : null,
+          thumbnailUrlKey: thumbnailUrlKey
+            ? String(thumbnailUrlKey).trim()
+            : null,
         });
       }
 
@@ -185,8 +208,11 @@ export const importData = async (req, res) => {
         }
       });
 
-      return ok(res, { count: results.length }, `${results.length} services imported & merged successfully.`);
-
+      return ok(
+        res,
+        { count: results.length },
+        `${results.length} services imported & merged successfully.`,
+      );
     } else {
       // 2. Process Packages Import
       const packagesToUpsert = [];
@@ -194,19 +220,46 @@ export const importData = async (req, res) => {
         const row = data[i];
         const rowNum = i + 1;
 
-        const name = row.name || row.Name || row.packageName || row.package_name;
+        const name =
+          row.name || row.Name || row.packageName || row.package_name;
         const description = row.description || row.Description || null;
-        const regularPriceVal = row.regularPrice !== undefined ? row.regularPrice : (row.RegularPrice !== undefined ? row.RegularPrice : null);
-        const discountedPriceVal = row.discountedPrice !== undefined ? row.discountedPrice : (row.DiscountedPrice !== undefined ? row.DiscountedPrice : regularPriceVal);
+        const regularPriceVal =
+          row.regularPrice !== undefined
+            ? row.regularPrice
+            : row.RegularPrice !== undefined
+              ? row.RegularPrice
+              : null;
+        const discountedPriceVal =
+          row.discountedPrice !== undefined
+            ? row.discountedPrice
+            : row.DiscountedPrice !== undefined
+              ? row.DiscountedPrice
+              : regularPriceVal;
         const tags = row.tags || row.Tags || null;
         const vehicleType = row.vehicleType || row.VehicleType || null;
         const vehicleModelVal = row.vehicleModel || row.VehicleModel || null;
         const bodyguardType = row.bodyguardType || row.BodyguardType || null;
-        const tripsVal = row.trips !== undefined ? row.trips : (row.Trips !== undefined ? row.Trips : null);
+        const tripsVal =
+          row.trips !== undefined
+            ? row.trips
+            : row.Trips !== undefined
+              ? row.Trips
+              : null;
         const category = row.category || row.Category || null;
-        const validityVal = row.validity !== undefined ? row.validity : (row.Validity !== undefined ? row.Validity : null);
-        const thumbnailUrlKey = row.thumbnailUrlKey || row.ThumbnailUrlKey || null;
-        const isActiveVal = row.isActive !== undefined ? row.isActive : (row.IsActive !== undefined ? row.IsActive : true);
+        const validityVal =
+          row.validity !== undefined
+            ? row.validity
+            : row.Validity !== undefined
+              ? row.Validity
+              : null;
+        const thumbnailUrlKey =
+          row.thumbnailUrlKey || row.ThumbnailUrlKey || null;
+        const isActiveVal =
+          row.isActive !== undefined
+            ? row.isActive
+            : row.IsActive !== undefined
+              ? row.IsActive
+              : true;
         const servicesVal = row.services || row.Services || null;
         const imagesVal = row.images || row.Images || null;
         const videosVal = row.videos || row.Videos || null;
@@ -214,7 +267,7 @@ export const importData = async (req, res) => {
         if (!name || typeof name !== "string" || !name.trim()) {
           return badRequest(
             res,
-            `Validation error at row ${rowNum}: Package name is required.`
+            `Validation error at row ${rowNum}: Package name is required.`,
           );
         }
 
@@ -224,19 +277,19 @@ export const importData = async (req, res) => {
         if (isNaN(regularPrice) || regularPrice <= 0) {
           return badRequest(
             res,
-            `Validation error at row ${rowNum}: Regular price must be a positive number.`
+            `Validation error at row ${rowNum}: Regular price must be a positive number.`,
           );
         }
         if (isNaN(discountedPrice) || discountedPrice <= 0) {
           return badRequest(
             res,
-            `Validation error at row ${rowNum}: Discounted price must be a positive number.`
+            `Validation error at row ${rowNum}: Discounted price must be a positive number.`,
           );
         }
         if (regularPrice < discountedPrice) {
           return badRequest(
             res,
-            `Validation error at row ${rowNum}: Regular price cannot be less than discounted price.`
+            `Validation error at row ${rowNum}: Regular price cannot be less than discounted price.`,
           );
         }
 
@@ -253,7 +306,10 @@ export const importData = async (req, res) => {
               }
             } else {
               // Comma-separated models
-              vehicleModel = trimmed.split(",").map((m) => m.trim()).filter(Boolean);
+              vehicleModel = trimmed
+                .split(",")
+                .map((m) => m.trim())
+                .filter(Boolean);
             }
           } else if (Array.isArray(vehicleModelVal)) {
             vehicleModel = vehicleModelVal;
@@ -263,19 +319,27 @@ export const importData = async (req, res) => {
         }
 
         const trips = tripsVal !== null ? parseInt(tripsVal, 10) : null;
-        const validity = validityVal !== null ? parseInt(validityVal, 10) : null;
+        const validity =
+          validityVal !== null ? parseInt(validityVal, 10) : null;
 
         if (trips !== null && (isNaN(trips) || trips < 0)) {
-          return badRequest(res, `Validation error at row ${rowNum}: Trips must be a positive integer.`);
+          return badRequest(
+            res,
+            `Validation error at row ${rowNum}: Trips must be a positive integer.`,
+          );
         }
         if (validity !== null && (isNaN(validity) || validity < 0)) {
-          return badRequest(res, `Validation error at row ${rowNum}: Validity must be a positive integer.`);
+          return badRequest(
+            res,
+            `Validation error at row ${rowNum}: Validity must be a positive integer.`,
+          );
         }
 
         let isActive = true;
         if (typeof isActiveVal === "string") {
           const val = isActiveVal.toLowerCase().trim();
-          isActive = val === "true" || val === "yes" || val === "1" || val === "active";
+          isActive =
+            val === "true" || val === "yes" || val === "1" || val === "active";
         } else {
           isActive = Boolean(isActiveVal);
         }
@@ -307,7 +371,9 @@ export const importData = async (req, res) => {
           trips,
           category: category ? String(category).trim() : null,
           validity,
-          thumbnailUrlKey: thumbnailUrlKey ? String(thumbnailUrlKey).trim() : null,
+          thumbnailUrlKey: thumbnailUrlKey
+            ? String(thumbnailUrlKey).trim()
+            : null,
           isActive,
           parsedServices,
           images,
@@ -422,9 +488,12 @@ export const importData = async (req, res) => {
         }
       });
 
-      return ok(res, { count: results.length }, `${results.length} packages imported & merged successfully.`);
+      return ok(
+        res,
+        { count: results.length },
+        `${results.length} packages imported & merged successfully.`,
+      );
     }
-
   } catch (error) {
     console.error("Error importing data:", error);
     return internalError(res, "Failed to import file data.");
@@ -435,10 +504,16 @@ export const exportData = async (req, res) => {
   try {
     const { target, type } = req.query;
     if (!target || (target !== "services" && target !== "packages")) {
-      return badRequest(res, "Invalid target. Target must be 'services' or 'packages'.");
+      return badRequest(
+        res,
+        "Invalid target. Target must be 'services' or 'packages'.",
+      );
     }
     if (!type || (type !== "csv" && type !== "json" && type !== "xlsx")) {
-      return badRequest(res, "Invalid file format type. Must be 'csv', 'json', or 'xlsx'.");
+      return badRequest(
+        res,
+        "Invalid file format type. Must be 'csv', 'json', or 'xlsx'.",
+      );
     }
 
     let exportList = [];
@@ -522,28 +597,40 @@ export const exportData = async (req, res) => {
     const filename = `${target}_export_${Date.now()}`;
 
     if (type === "json") {
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}.json"`);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}.json"`,
+      );
       res.setHeader("Content-Type", "application/json");
       return res.send(JSON.stringify(exportList, null, 2));
     } else if (type === "csv") {
       const csvContent = convertToCSV(exportList);
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}.csv"`);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}.csv"`,
+      );
       res.setHeader("Content-Type", "text/csv");
       return res.send(csvContent);
     } else if (type === "xlsx") {
       const ws = XLSX.utils.json_to_sheet(exportList);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, target === "services" ? "Services" : "Packages");
+      XLSX.utils.book_append_sheet(
+        wb,
+        ws,
+        target === "services" ? "Services" : "Packages",
+      );
 
       const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}.xlsx"`);
+      res.setHeader(
+        "Content-Disposition",
+        `attachment; filename="${filename}.xlsx"`,
+      );
       res.setHeader(
         "Content-Type",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       );
       return res.send(buffer);
     }
-
   } catch (error) {
     console.error("Error exporting data:", error);
     return internalError(res, "Failed to export data.");

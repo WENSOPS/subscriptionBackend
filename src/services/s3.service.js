@@ -2,7 +2,6 @@ import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import s3Client from "../config/storage/s3.js";
 
-
 const BUCKET = process.env.S3_BUCKET;
 
 /**
@@ -15,7 +14,7 @@ const BUCKET = process.env.S3_BUCKET;
  */
 async function uploadInvoiceToS3(pdfBuffer, invoiceNumber) {
   const now = new Date();
-  const year  = now.getFullYear();
+  const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, "0");
 
   // Folder structure: invoices/2024/06/INV-20240615-4821.pdf

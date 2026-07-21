@@ -25,12 +25,12 @@ const signPackageMedia = async (pkg) => {
   // Sign thumbnail
   pkg.thumbnailUrl = pkg.thumbnailUrlKey
     ? await getSignedUrl(
-      s3Client,
-      new GetObjectCommand({
-        Bucket: process.env.S3_BUCKET,
-        Key: pkg.thumbnailUrlKey,
-      })
-    )
+        s3Client,
+        new GetObjectCommand({
+          Bucket: process.env.S3_BUCKET,
+          Key: pkg.thumbnailUrlKey,
+        }),
+      )
     : null;
 
   // Sign packageMedia relation if loaded
@@ -46,9 +46,9 @@ const signPackageMedia = async (pkg) => {
           new GetObjectCommand({
             Bucket: process.env.S3_BUCKET,
             Key: media.urlKey,
-          })
+          }),
         ),
-      }))
+      })),
     );
 
     pkg.images = signedMedia
@@ -94,7 +94,7 @@ export const getAllPackages = async (req, res) => {
     const packageWithImages = await Promise.all(
       packages.map(async (pkg) => {
         return await signPackageMedia(pkg);
-      })
+      }),
     );
 
     const response = {
@@ -181,19 +181,19 @@ export const getPackageServices = async (req, res) => {
       packageServices.map(async (ps) => {
         const thumbnailUrl = ps.service?.thumbnailUrlKey
           ? await getSignedUrl(
-            s3Client,
-            new GetObjectCommand({
-              Bucket: process.env.S3_BUCKET,
-              Key: ps.service.thumbnailUrlKey,
-            })
-          )
+              s3Client,
+              new GetObjectCommand({
+                Bucket: process.env.S3_BUCKET,
+                Key: ps.service.thumbnailUrlKey,
+              }),
+            )
           : null;
         return {
           ...ps.service,
           count: ps.count,
           thumbnailUrl,
         };
-      })
+      }),
     );
 
     const response = {
@@ -237,7 +237,10 @@ export const createPackage = async (req, res) => {
   try {
     // Defense-in-depth (also enforced in validation rules)
     if (Number(regularPrice) < Number(discountedPrice)) {
-      return badRequest(res, "Regular price cannot be less than discounted price");
+      return badRequest(
+        res,
+        "Regular price cannot be less than discounted price",
+      );
     }
 
     const mediaRecords = [
@@ -252,6 +255,14 @@ export const createPackage = async (req, res) => {
         order: index,
       })),
     ];
+
+    // Find the maximum sequence in the category to place this new package at the end
+    const maxSequencePkg = await prisma.package.findFirst({
+      where: { category },
+      orderBy: { sequence: "desc" },
+      select: { sequence: true },
+    });
+    const nextSequence = maxSequencePkg ? maxSequencePkg.sequence + 1 : 1;
 
     const newPackage = await prisma.package.create({
       data: {
@@ -268,6 +279,10 @@ export const createPackage = async (req, res) => {
         validity,
         thumbnailUrlKey,
         category,
+        sequence:
+          req.body.sequence !== undefined
+            ? parseInt(req.body.sequence)
+            : nextSequence,
         ...(termsAndConditions !== undefined && { termsAndConditions }),
         packageServices: {
           create: services.map((service) => ({
@@ -294,12 +309,12 @@ export const createPackage = async (req, res) => {
     // Sign thumbnail
     const thumbnailUrl = newPackage.thumbnailUrlKey
       ? await getSignedUrl(
-        s3Client,
-        new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: newPackage.thumbnailUrlKey,
-        })
-      )
+          s3Client,
+          new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: newPackage.thumbnailUrlKey,
+          }),
+        )
       : null;
 
     // Sign all media (images + videos) in parallel
@@ -314,9 +329,9 @@ export const createPackage = async (req, res) => {
           new GetObjectCommand({
             Bucket: process.env.S3_BUCKET,
             Key: media.urlKey,
-          })
+          }),
         ),
-      }))
+      })),
     );
 
     newPackage.thumbnailUrl = thumbnailUrl;
@@ -346,6 +361,7 @@ export const getAllPackagesForUsers = async (req, res) => {
     const where = { isActive: true, category };
     const packages = await prisma.package.findMany({
       where,
+      orderBy: { sequence: "asc" },
       include: {
         packageServices: {
           include: {
@@ -381,10 +397,10 @@ export const updatePackage = async (req, res) => {
     services,
     category,
     thumbnailUrlKey,
-    images,             // newly uploaded image S3 keys
-    videos,             // newly uploaded video S3 keys
-    existingPhotoKeys,   // kept image S3 keys
-    existingVideoKeys,   // kept video S3 keys
+    images, // newly uploaded image S3 keys
+    videos, // newly uploaded video S3 keys
+    existingPhotoKeys, // kept image S3 keys
+    existingVideoKeys, // kept video S3 keys
     termsAndConditions,
     gst,
   } = req.body;
@@ -425,6 +441,10 @@ export const updatePackage = async (req, res) => {
         bodyguardType,
         discountedPrice,
         thumbnailUrlKey,
+        sequence:
+          req.body.sequence !== undefined
+            ? parseInt(req.body.sequence)
+            : undefined,
         gst,
         ...(services && {
           packageServices: {
@@ -471,5 +491,79 @@ export const deletePackage = async (req, res) => {
       return notFound(res, "Package not found");
     }
     return internalError(res, "Failed to delete package");
+  }
+};
+
+export const getUniqueCategories = async (req, res) => {
+  try {
+    const packages = await prisma.package.findMany({
+      select: {
+        category: true,
+      },
+      distinct: ["category"],
+    });
+
+    const categories = packages
+      .map((p) => p.category)
+      .filter((cat) => cat && cat.trim() !== "");
+
+    return ok(res, categories, "Unique categories fetched successfully");
+  } catch (error) {
+    console.error("Error fetching unique categories:", error);
+    return internalError(res, "Failed to fetch unique categories");
+  }
+};
+
+export const getPackagesByCategoryForAdmin = async (req, res) => {
+  try {
+    const { category } = req.params;
+    if (!category) {
+      return badRequest(res, "Category parameter is required");
+    }
+    const packages = await prisma.package.findMany({
+      where: { category },
+      orderBy: [{ sequence: "asc" }, { id: "asc" }],
+      include: {
+        packageMedia: true,
+      },
+    });
+
+    const packagesWithImages = await Promise.all(
+      packages.map(async (pkg) => {
+        return await signPackageMedia(pkg);
+      }),
+    );
+
+    return ok(
+      res,
+      packagesWithImages,
+      "Packages for category fetched successfully",
+    );
+  } catch (error) {
+    console.error("Error fetching packages by category:", error);
+    return internalError(res, "Failed to fetch packages by category");
+  }
+};
+
+export const updatePackageSequence = async (req, res) => {
+  try {
+    const { packageIds } = req.body;
+    if (!Array.isArray(packageIds)) {
+      return badRequest(res, "packageIds must be an array of package IDs");
+    }
+
+    await prisma.$transaction(
+      packageIds.map((id, index) =>
+        prisma.package.update({
+          where: { id: parseInt(id) },
+          data: { sequence: index + 1 },
+        }),
+      ),
+    );
+
+    return ok(res, null, "Package sequence updated successfully");
+  } catch (error) {
+    console.error("Error updating package sequence:", error);
+    return internalError(res, "Failed to update package sequence");
   }
 };

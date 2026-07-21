@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE `orders` ADD COLUMN `currency` VARCHAR(191) NOT NULL DEFAULT 'INR';

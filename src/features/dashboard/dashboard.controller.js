@@ -11,13 +11,13 @@ export const getAdminDashboard = async (req, res) => {
       totalPackages,
       totalServices,
       totalCoupons,
-      revenueResult
+      revenueResult,
     ] = await Promise.all([
       prisma.user.count({
-        where: { role: "user" }
+        where: { role: "user" },
       }),
       prisma.subscription.count({
-        where: { status: "active" }
+        where: { status: "active" },
       }),
       prisma.booking.count(),
       prisma.package.count(),
@@ -25,12 +25,12 @@ export const getAdminDashboard = async (req, res) => {
       prisma.coupon.count(),
       prisma.order.aggregate({
         _sum: {
-          finalAmount: true
+          finalAmount: true,
         },
         where: {
-          status: "PAID"
-        }
-      })
+          status: "PAID",
+        },
+      }),
     ]);
 
     const totalRevenue = revenueResult._sum.finalAmount || 0;
@@ -45,17 +45,17 @@ export const getAdminDashboard = async (req, res) => {
       prisma.user.findMany({
         where: {
           role: "user",
-          createdAt: { gte: sixMonthsAgo }
+          createdAt: { gte: sixMonthsAgo },
         },
-        select: { createdAt: true }
+        select: { createdAt: true },
       }),
       prisma.order.findMany({
         where: {
           status: "PAID",
-          createdAt: { gte: sixMonthsAgo }
+          createdAt: { gte: sixMonthsAgo },
         },
-        select: { createdAt: true, finalAmount: true }
-      })
+        select: { createdAt: true, finalAmount: true },
+      }),
     ]);
 
     // Construct 6 months template
@@ -68,16 +68,18 @@ export const getAdminDashboard = async (req, res) => {
         year: d.getFullYear(),
         revenue: 0,
         orders: 0,
-        users: 0
+        users: 0,
       });
     }
 
     // Populate revenue and orders trend
-    recentOrders.forEach(order => {
+    recentOrders.forEach((order) => {
       const oDate = new Date(order.createdAt);
       const oMonth = oDate.toLocaleString("default", { month: "short" });
       const oYear = oDate.getFullYear();
-      const bucket = monthsData.find(m => m.month === oMonth && m.year === oYear);
+      const bucket = monthsData.find(
+        (m) => m.month === oMonth && m.year === oYear,
+      );
       if (bucket) {
         bucket.revenue += order.finalAmount;
         bucket.orders += 1;
@@ -85,11 +87,13 @@ export const getAdminDashboard = async (req, res) => {
     });
 
     // Populate user growth trend
-    recentUsers.forEach(user => {
+    recentUsers.forEach((user) => {
       const uDate = new Date(user.createdAt);
       const uMonth = uDate.toLocaleString("default", { month: "short" });
       const uYear = uDate.getFullYear();
-      const bucket = monthsData.find(m => m.month === uMonth && m.year === uYear);
+      const bucket = monthsData.find(
+        (m) => m.month === uMonth && m.year === uYear,
+      );
       if (bucket) {
         bucket.users += 1;
       }
@@ -98,31 +102,31 @@ export const getAdminDashboard = async (req, res) => {
     // 3. Subscription distribution by status
     const subsGrouped = await prisma.subscription.groupBy({
       by: ["status"],
-      _count: { id: true }
+      _count: { id: true },
     });
-    const subscriptionStatus = subsGrouped.map(item => ({
+    const subscriptionStatus = subsGrouped.map((item) => ({
       status: item.status,
-      count: item._count.id
+      count: item._count.id,
     }));
 
     // 4. Trip distribution by status
     const tripsGrouped = await prisma.trip.groupBy({
       by: ["status"],
-      _count: { id: true }
+      _count: { id: true },
     });
-    const tripStatus = tripsGrouped.map(item => ({
+    const tripStatus = tripsGrouped.map((item) => ({
       status: item.status,
-      count: item._count.id
+      count: item._count.id,
     }));
 
     // 5. Booking distribution by status
     const bookingsGrouped = await prisma.booking.groupBy({
       by: ["status"],
-      _count: { id: true }
+      _count: { id: true },
     });
-    const bookingStatus = bookingsGrouped.map(item => ({
+    const bookingStatus = bookingsGrouped.map((item) => ({
       status: item.status,
-      count: item._count.id
+      count: item._count.id,
     }));
 
     // 6. Package Popularity
@@ -130,14 +134,14 @@ export const getAdminDashboard = async (req, res) => {
       select: {
         name: true,
         _count: {
-          select: { subscriptions: true }
-        }
-      }
+          select: { subscriptions: true },
+        },
+      },
     });
     const packagePopularity = packages
-      .map(p => ({
+      .map((p) => ({
         name: p.name,
-        subscriptions: p._count.subscriptions
+        subscriptions: p._count.subscriptions,
       }))
       .sort((a, b) => b.subscriptions - a.subscriptions)
       .slice(0, 5);
@@ -147,12 +151,12 @@ export const getAdminDashboard = async (req, res) => {
       select: {
         code: true,
         usedCount: true,
-        isActive: true
+        isActive: true,
       },
       orderBy: {
-        usedCount: "desc"
+        usedCount: "desc",
       },
-      take: 5
+      take: 5,
     });
 
     return ok(res, {
@@ -163,23 +167,22 @@ export const getAdminDashboard = async (req, res) => {
         totalPackages,
         totalServices,
         totalCoupons,
-        totalRevenue
+        totalRevenue,
       },
-      trends: monthsData.map(m => ({
+      trends: monthsData.map((m) => ({
         month: `${m.month} ${m.year.toString().slice(-2)}`,
         revenue: Math.round(m.revenue),
         orders: m.orders,
-        users: m.users
+        users: m.users,
       })),
       subscriptionStatus,
       tripStatus,
       bookingStatus,
       packagePopularity,
-      couponUsage: coupons
+      couponUsage: coupons,
     });
   } catch (error) {
     console.error("Error fetching admin dashboard data:", error);
     return internalError(res, error);
   }
 };
-

@@ -11,7 +11,7 @@ export const createCashfreeOrder = async (
 ) => {
   const orderRequest = {
     order_id: orderId,
-    order_amount: String(orderAmount),
+    order_amount: orderAmount, // ← just pass the number directly
     order_currency: currency,
     customer_details: {
       customer_id: String(customer.id),
@@ -32,9 +32,9 @@ export const createCashfreeOrder = async (
     paymentSessionId: order.payment_session_id,
   };
 };
-
 export const calculateGST = (packageGst, baseAmount) => {
-  const gstRate = packageGst !== null && packageGst !== undefined ? Number(packageGst) : 0;
+  const gstRate =
+    packageGst !== null && packageGst !== undefined ? Number(packageGst) : 0;
   const gstAmount = Math.ceil(baseAmount * (gstRate / 100));
   return {
     gstRate,

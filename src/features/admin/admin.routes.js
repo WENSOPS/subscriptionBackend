@@ -15,13 +15,9 @@ router.post(
   "/import",
   authMiddleware(["admin"]),
   upload.single("file"),
-  adminController.importData
+  adminController.importData,
 );
 
-router.get(
-  "/export",
-  authMiddleware(["admin"]),
-  adminController.exportData
-);
+router.get("/export", authMiddleware(["admin"]), adminController.exportData);
 
 export default router;

@@ -75,7 +75,8 @@ export const createOffer = async (req, res) => {
     if (existingOfferForCategory) {
       return res.status(200).json({
         success: false,
-        message: "Offer already going on in this category. Please make the earlier one inactive first.",
+        message:
+          "Offer already going on in this category. Please make the earlier one inactive first.",
       });
     }
 
@@ -99,20 +100,21 @@ export const createOffer = async (req, res) => {
         ctaPrimaryText,
         ctaPrimaryHref,
         featuredPackages: {
-          connect: featuredPackageIds && Array.isArray(featuredPackageIds)
-            ? featuredPackageIds.map((id) => ({ id: parseInt(id) }))
-            : [],
+          connect:
+            featuredPackageIds && Array.isArray(featuredPackageIds)
+              ? featuredPackageIds.map((id) => ({ id: parseInt(id) }))
+              : [],
         },
         ctaSecondaryText,
         footerNote,
         benefits: {
           create: benefits
             ? benefits.map((b) => ({
-              icon: b.icon,
-              title: b.title,
-              description: b.description,
-              order: b.order || 0,
-            }))
+                icon: b.icon,
+                title: b.title,
+                description: b.description,
+                order: b.order || 0,
+              }))
             : [],
         },
       },
@@ -175,14 +177,25 @@ export const updateOffer = async (req, res) => {
       }
     }
 
-    const targetStart = startDate !== undefined ? (startDate ? new Date(startDate) : null) : (currentOffer.startDate ? new Date(currentOffer.startDate) : null);
-    const targetEnd = endDate ? new Date(endDate) : new Date(currentOffer.endDate);
+    const targetStart =
+      startDate !== undefined
+        ? startDate
+          ? new Date(startDate)
+          : null
+        : currentOffer.startDate
+          ? new Date(currentOffer.startDate)
+          : null;
+    const targetEnd = endDate
+      ? new Date(endDate)
+      : new Date(currentOffer.endDate);
     if (targetStart && targetStart >= targetEnd) {
       return badRequest(res, "Start date must be before end date");
     }
 
-    const targetCategory = category !== undefined ? category : currentOffer.category;
-    const targetIsActive = isActive !== undefined ? isActive : currentOffer.isActive;
+    const targetCategory =
+      category !== undefined ? category : currentOffer.category;
+    const targetIsActive =
+      isActive !== undefined ? isActive : currentOffer.isActive;
 
     if (featuredPackageIds && Array.isArray(featuredPackageIds)) {
       for (const pId of featuredPackageIds) {
@@ -210,7 +223,8 @@ export const updateOffer = async (req, res) => {
       if (existingOfferForCategory) {
         return res.status(200).json({
           success: false,
-          message: "Offer already going on in this category. Please make the earlier one inactive first.",
+          message:
+            "Offer already going on in this category. Please make the earlier one inactive first.",
         });
       }
     }
@@ -220,7 +234,12 @@ export const updateOffer = async (req, res) => {
       data: {
         slug,
         isActive,
-        startDate: startDate !== undefined ? (startDate ? new Date(startDate) : null) : undefined,
+        startDate:
+          startDate !== undefined
+            ? startDate
+              ? new Date(startDate)
+              : null
+            : undefined,
         endDate: endDate ? new Date(endDate) : undefined,
         category,
         alertText,
@@ -235,9 +254,14 @@ export const updateOffer = async (req, res) => {
         deadlineNoteBody,
         ctaPrimaryText,
         ctaPrimaryHref,
-        featuredPackages: featuredPackageIds !== undefined ? {
-          set: featuredPackageIds ? featuredPackageIds.map((id) => ({ id: parseInt(id) })) : [],
-        } : undefined,
+        featuredPackages:
+          featuredPackageIds !== undefined
+            ? {
+                set: featuredPackageIds
+                  ? featuredPackageIds.map((id) => ({ id: parseInt(id) }))
+                  : [],
+              }
+            : undefined,
         ctaSecondaryText,
         footerNote,
         ...(benefits && {

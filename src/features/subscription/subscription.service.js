@@ -11,7 +11,7 @@ export const createSubscription = async (
   packageId,
   startDate,
   paymentId,
-
+  status = "pending",
 ) => {
   try {
     const pkg = await prisma.package.findUnique({
@@ -36,8 +36,7 @@ export const createSubscription = async (
         packageId: parseInt(packageId),
         startDate: new Date(startDate),
         endDate: getEndDate(startDate, pkg.validity) || null,
-        status: "active",
-        // status: "pending",
+        status,
         paymentId,
         tripsTotal: pkg.trips,
         tripsUsed: 0,

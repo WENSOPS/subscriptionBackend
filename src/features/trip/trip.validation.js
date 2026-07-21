@@ -20,11 +20,11 @@ export const createTripValidation = [
   body("tripDate").isISO8601().withMessage("Trip date must be a valid date"),
   body("tripType")
     .isIn(["airport-transfer", "8Hour/80Km", "Full day"])
-    .withMessage("Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'"),
+    .withMessage(
+      "Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'",
+    ),
   body("services").isArray().withMessage("Services must be an array"),
-  body("services.*.id")
-    .isInt()
-    .withMessage("Service ID must be an integer"),
+  body("services.*.id").isInt().withMessage("Service ID must be an integer"),
   body("services.*.name")
     .isString()
     .withMessage("Service name must be a string"),
@@ -48,11 +48,11 @@ export const requestTripValidation = [
   body("tripDate").isISO8601().withMessage("Trip date must be a valid date"),
   body("tripType")
     .isIn(["airport-transfer", "8Hr/80Km", "Full day"])
-    .withMessage("Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'"),
+    .withMessage(
+      "Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'",
+    ),
   body("services").isArray().withMessage("Services must be an array"),
-  body("services.*.id")
-    .isInt()
-    .withMessage("Service ID must be an integer"),
+  body("services.*.id").isInt().withMessage("Service ID must be an integer"),
   body("services.*.name")
     .isString()
     .withMessage("Service name must be a string"),
@@ -87,7 +87,9 @@ export const updateTripValidation = [
   body("tripType")
     .optional()
     .isIn(["airport-transfer", "8Hr/80Km", "Full day"])
-    .withMessage("Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'"),
+    .withMessage(
+      "Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'",
+    ),
   body("services")
     .optional()
     .isArray()

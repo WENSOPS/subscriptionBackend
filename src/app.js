@@ -28,12 +28,14 @@ app.use(cookieParser());
 //   }),
 // );
 
-app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001', '*'],   // ✅ exact frontend origin, no trailing slash
-  credentials: true,                  // ✅ allow cookies/auth headers
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+app.use(
+  cors({
+    origin: ["http://localhost:3000", "http://localhost:3001", "*"], // ✅ exact frontend origin, no trailing slash
+    credentials: true, // ✅ allow cookies/auth headers
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  }),
+);
 
 app.use("/api/v1/auth", authRoutes);
 app.use("/api/v1/service", serviceRoutes);
@@ -51,12 +53,16 @@ app.use("/api/v1/admin", adminRoutes);
 
 app.get("/api/v1/health", async (req, res) => {
   // console.log('HIT:', new Date().toISOString(), req.query);
- const response = await axios.get('https://data-storage.doubletick.io/org_Tl3NjkA3qK/chat-messages/51f5892c-977f-4f21-b8f2-415f410459bd/call-recordings/wacid.IhggMDA3QkM2MEVBMUZDMTA1Qzg1RkE3RDkxMDM1NUYwNTUcGAw5MTczMDQ2MDc5NTQVAgAVFgA=.mp3',{
-    headers: {
-      'Authorization': 'key_t1POnzbYPdiMAOxeHskabaTArW6tx7RpSQY4NQoVpxWzTW1hVzOGZ6IyRp72LD2CqxMwORRT8vhMZtGQVWFRFbXAoiVXGRxKUcuSjUdPIdeS2iFpCZOGpKrhddmMx9dR5AJ2hnhdIhGznco8uORYTljtwKTt7zEyWg2WeikJ2qWZ7m1f47M5VycchWI2u3e0p7HuqG19X9PcKyYsLW6DwEuOgrNTqM9bwzRo8DxpzGv2l7tAQ6WfrWIH6pmy'
-    }
-  })
-  console.log('response:', response.data);
+  const response = await axios.get(
+    "https://data-storage.doubletick.io/org_Tl3NjkA3qK/chat-messages/51f5892c-977f-4f21-b8f2-415f410459bd/call-recordings/wacid.IhggMDA3QkM2MEVBMUZDMTA1Qzg1RkE3RDkxMDM1NUYwNTUcGAw5MTczMDQ2MDc5NTQVAgAVFgA=.mp3",
+    {
+      headers: {
+        Authorization:
+          "key_t1POnzbYPdiMAOxeHskabaTArW6tx7RpSQY4NQoVpxWzTW1hVzOGZ6IyRp72LD2CqxMwORRT8vhMZtGQVWFRFbXAoiVXGRxKUcuSjUdPIdeS2iFpCZOGpKrhddmMx9dR5AJ2hnhdIhGznco8uORYTljtwKTt7zEyWg2WeikJ2qWZ7m1f47M5VycchWI2u3e0p7HuqG19X9PcKyYsLW6DwEuOgrNTqM9bwzRo8DxpzGv2l7tAQ6WfrWIH6pmy",
+      },
+    },
+  );
+  console.log("response:", response.data);
   res.send("Hello, World!", response.data);
 });
 

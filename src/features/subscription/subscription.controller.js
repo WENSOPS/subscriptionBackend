@@ -19,7 +19,7 @@ import {
 import { stringify } from "node:querystring";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import S3Client from "../../config/storage/s3.js"
+import S3Client from "../../config/storage/s3.js";
 export const getMySubscription = async (req, res) => {
   const userId = req.user?.userId;
   try {
@@ -35,10 +35,13 @@ export const getMySubscription = async (req, res) => {
 
     for (const subscription of subscriptions) {
       subscription.package.thumbnailUrl = subscription.package?.thumbnailUrlKey
-        ? await getSignedUrl(S3Client, new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: subscription.package.thumbnailUrlKey,
-        }))
+        ? await getSignedUrl(
+            S3Client,
+            new GetObjectCommand({
+              Bucket: process.env.S3_BUCKET,
+              Key: subscription.package.thumbnailUrlKey,
+            }),
+          )
         : null;
     }
 
@@ -67,10 +70,13 @@ export const getMySubscriptionHistory = async (req, res) => {
 
     for (const subscription of subscriptions) {
       const thumbnailUrl = subscription.package?.thumbnailUrlKey
-        ? await getSignedUrl(S3Client, new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: subscription.package.thumbnailUrlKey,
-        }))
+        ? await getSignedUrl(
+            S3Client,
+            new GetObjectCommand({
+              Bucket: process.env.S3_BUCKET,
+              Key: subscription.package.thumbnailUrlKey,
+            }),
+          )
         : null;
 
       subscription.package.thumbnailUrl = thumbnailUrl;
@@ -84,20 +90,14 @@ export const getMySubscriptionHistory = async (req, res) => {
 };
 
 export const createSubscriptionController = async (req, res) => {
-  const {
-    userId,
-    packageId,
-    startDate,
-    endDate,
-    paymentId,
-  } = req.body;
+  const { userId, packageId, startDate, paymentId } = req.body;
   try {
     const subscription = await createSubscription(
       userId,
       packageId,
       startDate,
-      endDate,
       paymentId,
+      "active",
     );
     created(res, subscription);
   } catch (error) {
@@ -136,12 +136,12 @@ export const getSubscriptionById = async (req, res) => {
     }
     const thumbnailUrl = subscription.package?.thumbnailUrlKey
       ? await getSignedUrl(
-        s3Client,
-        new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: subscription.package?.thumbnailUrlKey,
-        })
-      )
+          s3Client,
+          new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: subscription.package?.thumbnailUrlKey,
+          }),
+        )
       : null;
 
     subscription.package.thumbnailUrl = thumbnailUrl;
