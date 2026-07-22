@@ -40,7 +40,12 @@ export const createOffer = async (req, res) => {
     });
 
     if (existingOffer) {
-      return conflict(res, "Offer with this slug already exists");
+      return res.status(200).json({
+        success: false,
+        statusCode: 200,
+        message: "Offer with this slug already exists",
+        errors: null,
+      });
     }
 
     const start = startDate ? new Date(startDate) : null;
@@ -173,7 +178,12 @@ export const updateOffer = async (req, res) => {
         where: { slug },
       });
       if (existingOffer && existingOffer.id !== offerId) {
-        return conflict(res, "Offer with this slug already exists");
+        return res.status(200).json({
+          success: false,
+          statusCode: 200,
+          message: "Offer with this slug already exists",
+          errors: null,
+        });
       }
     }
 
@@ -324,7 +334,12 @@ export const getOffer = async (req, res) => {
     });
 
     if (!offer) {
-      return notFound(res, "Active offer for this category not found");
+      return res.status(200).json({
+        success: false,
+        statusCode: 200,
+        message: "Active offer for this category not found",
+        errors: null,
+      });
     }
 
     return ok(res, offer, "Offer fetched successfully");

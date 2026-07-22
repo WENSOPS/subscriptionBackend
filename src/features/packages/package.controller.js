@@ -24,13 +24,15 @@ const signPackageMedia = async (pkg) => {
 
   // Sign thumbnail
   pkg.thumbnailUrl = pkg.thumbnailUrlKey
-    ? await getSignedUrl(
-        s3Client,
-        new GetObjectCommand({
-          Bucket: process.env.S3_BUCKET,
-          Key: pkg.thumbnailUrlKey,
-        }),
-      )
+    ? (pkg.thumbnailUrlKey.startsWith("/") || pkg.thumbnailUrlKey.startsWith("http")
+      ? pkg.thumbnailUrlKey
+      : await getSignedUrl(
+          s3Client,
+          new GetObjectCommand({
+            Bucket: process.env.S3_BUCKET,
+            Key: pkg.thumbnailUrlKey,
+          }),
+        ))
     : null;
 
   // Sign packageMedia relation if loaded
@@ -41,13 +43,15 @@ const signPackageMedia = async (pkg) => {
         type: media.type,
         order: media.order,
         urlKey: media.urlKey,
-        url: await getSignedUrl(
-          s3Client,
-          new GetObjectCommand({
-            Bucket: process.env.S3_BUCKET,
-            Key: media.urlKey,
-          }),
-        ),
+        url: media.urlKey.startsWith("/") || media.urlKey.startsWith("http")
+          ? media.urlKey
+          : await getSignedUrl(
+              s3Client,
+              new GetObjectCommand({
+                Bucket: process.env.S3_BUCKET,
+                Key: media.urlKey,
+              }),
+            ),
       })),
     );
 
