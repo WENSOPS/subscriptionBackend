@@ -12,6 +12,7 @@ import storageRoutes from "./features/storage/storage.routes.js";
 import bookingRoutes from "./features/booking/booking.routes.js";
 import offerRoutes from "./features/Offer/offer.routes.js";
 import adminRoutes from "./features/admin/admin.routes.js";
+import referralRoutes from "./features/referral/referral.route.js";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import axios from "axios";
@@ -50,6 +51,7 @@ app.use("/api/v1/upload", storageRoutes);
 app.use("/api/v1/booking", bookingRoutes);
 app.use("/api/v1/offer", offerRoutes);
 app.use("/api/v1/admin", adminRoutes);
+app.use("/api/v1/referral", referralRoutes);
 
 app.get("/api/v1/health", async (req, res) => {
   // console.log('HIT:', new Date().toISOString(), req.query);

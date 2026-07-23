@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
-import { createCashfreeOrder, calculateGST, ensureSubscriptionCreated } from "./payment.service.js";
+import { createCashfreeOrder, calculateGST, ensureSubscriptionCreated, processReferralOnPayment } from "./payment.service.js";
 import {
   accepted,
   badRequest,
@@ -17,13 +17,18 @@ import {
 const CF_BASE_URL = "https://sandbox.cashfree.com"; // sandbox url
 
 export const createOrder = async (req, res) => {
-  const { packageId, couponCode } = req.body;
+  const { packageId, couponCode, referralRewardId } = req.body;
   const userId = req.user.userId;
 
   // ── Input validation ──────────────────────────────────────────
   const parsedPackageId = parseInt(packageId, 10);
   if (!packageId || isNaN(parsedPackageId)) {
     return badRequest(res, "Invalid packageId");
+  }
+
+  const parsedReferralRewardId = referralRewardId ? parseInt(referralRewardId, 10) : null;
+  if (referralRewardId && isNaN(parsedReferralRewardId)) {
+    return badRequest(res, "Invalid referralRewardId");
   }
 
   try {
@@ -53,8 +58,85 @@ export const createOrder = async (req, res) => {
       couponId = couponResult.couponId ?? null;
     }
 
+    // ── Validate referral reward ──────────────────────────────────
+    let referralReward = null;
+    let referralDiscountAmount = 0;
+
+    if (parsedReferralRewardId) {
+      referralReward = await prisma.referralReward.findUnique({
+        where: { id: parsedReferralRewardId }
+      });
+      if (!referralReward) {
+        return badRequest(res, "Referral reward not found");
+      }
+      if (referralReward.userId !== userId) {
+        return badRequest(res, "This referral reward does not belong to you");
+      }
+      if (referralReward.isRedeemed) {
+        return badRequest(res, "This referral reward has already been redeemed");
+      }
+
+      let eligiblePackages = [];
+      try {
+        eligiblePackages = Array.isArray(referralReward.eligiblePackageIds)
+          ? referralReward.eligiblePackageIds
+          : JSON.parse(referralReward.eligiblePackageIds || "[]");
+      } catch (e) {
+        eligiblePackages = [];
+      }
+      if (eligiblePackages.length > 0 && !eligiblePackages.includes(parsedPackageId)) {
+        return badRequest(res, "This referral reward is not eligible for the selected package");
+      }
+
+      // Check program category mapping
+      const tracks = await prisma.trackReferral.findMany({
+        where: {
+          OR: [
+            { referrerReferralRewardId: parsedReferralRewardId },
+            { refereeUserId: userId }
+          ]
+        },
+        include: { referralProgram: true }
+      });
+
+      let matchedProgram = null;
+      for (const track of tracks) {
+        if (track.referrerReferralRewardId === parsedReferralRewardId) {
+          matchedProgram = track.referralProgram;
+          break;
+        }
+        if (track.refereeRewardSnapshot) {
+          let snapshot = null;
+          try {
+            snapshot = typeof track.refereeRewardSnapshot === "string"
+              ? JSON.parse(track.refereeRewardSnapshot)
+              : track.refereeRewardSnapshot;
+          } catch (e) {}
+          if (snapshot && snapshot.id === parsedReferralRewardId) {
+            matchedProgram = track.referralProgram;
+            break;
+          }
+        }
+      }
+
+      if (matchedProgram && matchedProgram.packageCategory !== packageData.category) {
+        return badRequest(
+          res,
+          `This referral reward belongs to a "${matchedProgram.packageCategory}" program and cannot be used for "${packageData.category || ""}" packages`
+        );
+      }
+
+      if (referralReward.rewardCalcType === "fixed") {
+        referralDiscountAmount = referralReward.rewardValue;
+      } else if (referralReward.rewardCalcType === "percentage") {
+        const currentPrice = packageData.discountedPrice - discountAmount;
+        referralDiscountAmount = currentPrice * (referralReward.rewardValue / 100);
+      }
+      referralDiscountAmount = Math.min(referralDiscountAmount, packageData.discountedPrice - discountAmount);
+    }
+
     // ── Calculate final amount (never go below ₹1) ────────────────
-    const baseAmount = packageData.discountedPrice - discountAmount;
+    const baseAmount = packageData.discountedPrice - discountAmount - referralDiscountAmount;
     const { gstAmount } = calculateGST(packageData.gst, baseAmount);
     const orderAmount = Math.max(
       1,
@@ -88,6 +170,8 @@ export const createOrder = async (req, res) => {
           finalAmount: orderAmount,
           couponCode: couponCode || null,
           couponId: couponId || null,
+          appliedReferralRewardId: parsedReferralRewardId || null,
+          referralDiscountAmount: referralDiscountAmount || null,
           cashfreeOrderId: cashfreeResponse.orderId,
           paymentId: cashfreeResponse.paymentSessionId,
           // status:
@@ -114,6 +198,7 @@ export const createOrder = async (req, res) => {
         orderId: order.id,
         amount: orderAmount,
         discountAmount,
+        referralDiscountAmount,
         paymentSessionId: cashfreeResponse.paymentSessionId,
       },
       "Order created successfully",
@@ -138,8 +223,11 @@ export const verifyPayment = async (req, res) => {
       id: true,
       status: true,
       amount: true,
+      finalAmount: true,
       packageId: true,
       userId: true,
+      appliedReferralRewardId: true,
+      referralDiscountAmount: true,
       user: {
         select: { name: true }
       }
@@ -201,8 +289,10 @@ export const verifyPayment = async (req, res) => {
           packageId: order.packageId,
           paymentId: orderId,
         });
+
+        await processReferralOnPayment(order);
       } catch (subErr) {
-        console.error("[verifyPayment] Error creating subscription:", subErr);
+        console.error("[verifyPayment] Error creating subscription or processing referral:", subErr);
       }
     }
   }
@@ -242,8 +332,11 @@ export const handleWebhook = async (req, res) => {
             id: true,
             status: true,
             amount: true,
+            finalAmount: true,
             packageId: true,
             userId: true,
+            appliedReferralRewardId: true,
+            referralDiscountAmount: true,
             user: {
               select: { name: true, mobileNumber: true }
             }
@@ -290,11 +383,17 @@ export const handleWebhook = async (req, res) => {
           phone,
         );
 
-         ensureSubscriptionCreated({
-          userId: updatedOrder.userId,
-          packageId: updatedOrder.packageId,
-          paymentId: cashfreeOrderId,
-        });
+         try {
+           await ensureSubscriptionCreated({
+             userId: updatedOrder.userId,
+             packageId: updatedOrder.packageId,
+             paymentId: cashfreeOrderId,
+           });
+
+           await processReferralOnPayment(updatedOrder);
+         } catch (subErr) {
+           console.error("[webhook] Error creating subscription or processing referral:", subErr);
+         }
 
       } catch (error) {
         console.error("[webhook] Error during PAYMENT_SUCCESS handling:", error);

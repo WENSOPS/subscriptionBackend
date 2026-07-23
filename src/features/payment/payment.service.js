@@ -1,6 +1,7 @@
 import cashfree from "../../config/cashfree.js";
 import { prisma } from "../../lib/prisma.js";
 import { createSubscription } from "../subscription/subscription.service.js";
+import { findActiveProgramForPackage } from "../referral/referral.service.js";
 
 export const createCashfreeOrder = async (
   orderId,
@@ -77,4 +78,147 @@ export const ensureSubscriptionCreated = async ({
   );
 
   return { subscription, created: true };
+};
+
+export const processReferralOnPayment = async (order) => {
+  // 1. Redeems the applied referral reward if one was used
+  if (order.appliedReferralRewardId) {
+    await prisma.referralReward.update({
+      where: { id: order.appliedReferralRewardId },
+      data: {
+        isRedeemed: true,
+        redemptionDetails: {
+          orderId: order.id,
+          redeemedAt: new Date(),
+        },
+      },
+    });
+  }
+
+  // 2. If the buyer was referred and the purchased package is a trigger package,
+  // creates the referrer's ReferralReward + TrackReferral row and increments totalRedemptionCount.
+  const buyer = await prisma.user.findUnique({
+    where: { id: order.userId },
+    select: { referredByUserId: true },
+  });
+
+  if (buyer && buyer.referredByUserId) {
+    const activeProgram = await findActiveProgramForPackage(order.packageId);
+    if (activeProgram && activeProgram.rewardOnSignup === false) {
+      // Check program-wide limit (maxTotalRedemptions)
+      if (
+        activeProgram.maxTotalRedemptions !== null &&
+        activeProgram.totalRedemptionCount >= activeProgram.maxTotalRedemptions
+      ) {
+        return;
+      }
+
+      // Check per-user referrer limit (maxRedemptionsPerUser)
+      if (activeProgram.maxRedemptionsPerUser !== null) {
+        const referrerUsageCount = await prisma.trackReferral.count({
+          where: {
+            referrerUserId: buyer.referredByUserId,
+            referralProgramId: activeProgram.id,
+          },
+        });
+        if (referrerUsageCount >= activeProgram.maxRedemptionsPerUser) {
+          return;
+        }
+      }
+
+      // Verify the purchased package is a trigger package
+      const isTriggerPackage = activeProgram.referrerTriggerPackages.some(
+        (p) => p.packageId === order.packageId
+      );
+
+      if (isTriggerPackage) {
+        await prisma.$transaction(async (tx) => {
+          let referrerReward = null;
+          if (activeProgram.referrerRewardType && activeProgram.referrerRewardType !== "none") {
+            const referrerRewardAmount =
+              activeProgram.referrerRewardCalcType === "percentage"
+                ? 0
+                : (activeProgram.referrerRewardValue || 0);
+
+            referrerReward = await tx.referralReward.create({
+              data: {
+                userId: buyer.referredByUserId,
+                rewardCalcType: activeProgram.referrerRewardCalcType || "fixed",
+                rewardValue: activeProgram.referrerRewardValue || 0,
+                rewardAmountINR: referrerRewardAmount,
+                eligiblePackageIds:
+                  activeProgram.referrerPackageScope === "custom"
+                    ? activeProgram.referrerAllowedPackages.map((p) => p.packageId)
+                    : [],
+                isRedeemed: false,
+              },
+            });
+          }
+
+          let refereeReward = null;
+          if (activeProgram.refereeRewardType && activeProgram.refereeRewardType !== "none") {
+            const refereeRewardAmount =
+              activeProgram.refereeRewardCalcType === "percentage"
+                ? 0
+                : (activeProgram.refereeRewardValue || 0);
+
+            refereeReward = await tx.referralReward.create({
+              data: {
+                userId: order.userId,
+                rewardCalcType: activeProgram.refereeRewardCalcType || "fixed",
+                rewardValue: activeProgram.refereeRewardValue || 0,
+                rewardAmountINR: refereeRewardAmount,
+                eligiblePackageIds:
+                  activeProgram.refereePackageScope === "custom"
+                    ? activeProgram.refereeAllowedPackages.map((p) => p.packageId)
+                    : [],
+                isRedeemed: false,
+              },
+            });
+          }
+
+          await tx.trackReferral.create({
+            data: {
+              referralProgramId: activeProgram.id,
+              referralProgramNameSnapshot: activeProgram.name,
+              referrerUserId: buyer.referredByUserId,
+              refereeUserId: order.userId,
+              triggeredBySignup: false,
+              referrerRewardTypeSnapshot: activeProgram.referrerRewardType,
+              referrerRewardSnapshot: referrerReward
+                ? {
+                    id: referrerReward.id,
+                    rewardCalcType: referrerReward.rewardCalcType,
+                    rewardValue: referrerReward.rewardValue,
+                    rewardAmountINR: referrerReward.rewardAmountINR,
+                    eligiblePackageIds: referrerReward.eligiblePackageIds,
+                  }
+                : null,
+              refereeRewardTypeSnapshot: activeProgram.refereeRewardType,
+              refereeRewardSnapshot: refereeReward
+                ? {
+                    id: refereeReward.id,
+                    rewardCalcType: refereeReward.rewardCalcType,
+                    rewardValue: refereeReward.rewardValue,
+                    rewardAmountINR: refereeReward.rewardAmountINR,
+                    eligiblePackageIds: refereeReward.eligiblePackageIds,
+                  }
+                : null,
+              referrerReferralRewardId: referrerReward ? referrerReward.id : null,
+              triggeringOrderId: order.id,
+            },
+          });
+
+          await tx.referralProgram.update({
+            where: { id: activeProgram.id },
+            data: {
+              totalRedemptionCount: {
+                increment: 1,
+              },
+            },
+          });
+        });
+      }
+    }
+  }
 };
