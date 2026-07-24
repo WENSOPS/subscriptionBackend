@@ -42,8 +42,8 @@ export const generateReferralCode = async (name, category = "general") => {
   return `${categoryPrefix}_${userPrefix}${Date.now().toString().slice(-4)}`;
 };
 
-export const findActiveProgramForPackage = async (packageId) => {
-  let category = null;
+export const findActiveProgramForPackage = async (packageId, customCategory = null) => {
+  let category = customCategory;
   if (packageId) {
     const pkg = await prisma.package.findUnique({
       where: { id: packageId },
@@ -87,10 +87,26 @@ export const findActiveProgramForPackage = async (packageId) => {
   return activeProgram;
 };
 
-export const maybeCreateSignupReward = async (referrerId, refereeId) => {
-  const activeProgram = await findActiveProgramForPackage(null);
+export const checkReferralAlreadyRewarded = async (refereeUserId, referralProgramId) => {
+  const existingTrack = await prisma.trackReferral.findFirst({
+    where: {
+      refereeUserId,
+      referralProgramId,
+    },
+  });
+  return !!existingTrack;
+};
+
+export const maybeCreateSignupReward = async (referrerId, refereeId, category = "general") => {
+  const activeProgram = await findActiveProgramForPackage(null, category);
 
   if (!activeProgram || !activeProgram.rewardOnSignup) {
+    return;
+  }
+
+  // Check if referee has already been rewarded for this program
+  const alreadyRewarded = await checkReferralAlreadyRewarded(refereeId, activeProgram.id);
+  if (alreadyRewarded) {
     return;
   }
 

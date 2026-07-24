@@ -9,6 +9,12 @@ import {
   deleteReferralProgram,
   getReferralProgramTracks,
 } from "../referral/referral.controller.js";
+import {
+  createReferralProgramValidation,
+  updateReferralProgramValidation,
+  referralProgramIdParamValidation,
+  getReferralProgramTracksValidation,
+} from "../referral/referral.validation.js";
 import authMiddleware from "../../middleware/auth.middlewares.js";
 
 const router = Router();
@@ -31,6 +37,7 @@ router.get("/export", authMiddleware(["admin"]), adminController.exportData);
 router.post(
   "/referral-programs",
   authMiddleware(["admin", "ops"]),
+  createReferralProgramValidation,
   createReferralProgram,
 );
 
@@ -43,24 +50,28 @@ router.get(
 router.get(
   "/referral-programs/:id",
   authMiddleware(["admin", "ops"]),
+  referralProgramIdParamValidation,
   getReferralProgramById,
 );
 
 router.patch(
   "/referral-programs/:id",
   authMiddleware(["admin", "ops"]),
+  updateReferralProgramValidation,
   updateReferralProgram,
 );
 
 router.delete(
   "/referral-programs/:id",
   authMiddleware(["admin", "ops"]),
+  referralProgramIdParamValidation,
   deleteReferralProgram,
 );
 
 router.get(
   "/referral-programs/:id/track",
   authMiddleware(["admin", "ops"]),
+  getReferralProgramTracksValidation,
   getReferralProgramTracks,
 );
 

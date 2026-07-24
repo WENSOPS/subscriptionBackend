@@ -39,13 +39,15 @@ Retrieve a summary of the authenticated user's referral details, including their
 }
 ```
 
-### 1.2 POST `/referral/apply`
+### 1.2 POST `/referral/apply?category=<category_name>`
 Apply a referral code to assign a referrer to the current user. Validates limits, registration dates, and triggers signup rewards if active.
 * **Authentication**: `admin`, `ops`, or `user` token required.
+* **Query Parameters**:
+  * `category` (required): The package category target (e.g. `membership`, `welcome india`).
 * **Request Body**:
 ```json
 {
-  "referralCode": "RAHUL4X2"
+  "referralCode": "MEMB_RAHUL4X2"
 }
 ```
 * **Sample Response (200 OK)**:

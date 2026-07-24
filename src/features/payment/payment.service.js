@@ -1,7 +1,7 @@
 import cashfree from "../../config/cashfree.js";
 import { prisma } from "../../lib/prisma.js";
 import { createSubscription } from "../subscription/subscription.service.js";
-import { findActiveProgramForPackage } from "../referral/referral.service.js";
+import { findActiveProgramForPackage, checkReferralAlreadyRewarded } from "../referral/referral.service.js";
 
 export const createCashfreeOrder = async (
   orderId,
@@ -83,6 +83,7 @@ export const ensureSubscriptionCreated = async ({
 export const processReferralOnPayment = async (order) => {
   // 1. Redeems the applied referral reward if one was used
   if (order.appliedReferralRewardId) {
+    console.log("Create Reward")
     await prisma.referralReward.update({
       where: { id: order.appliedReferralRewardId },
       data: {
@@ -105,6 +106,12 @@ export const processReferralOnPayment = async (order) => {
   if (buyer && buyer.referredByUserId) {
     const activeProgram = await findActiveProgramForPackage(order.packageId);
     if (activeProgram && activeProgram.rewardOnSignup === false) {
+      // Check if referee has already been rewarded for this program
+      const alreadyRewarded = await checkReferralAlreadyRewarded(order.userId, activeProgram.id);
+      if (alreadyRewarded) {
+        return;
+      }
+
       // Check program-wide limit (maxTotalRedemptions)
       if (
         activeProgram.maxTotalRedemptions !== null &&

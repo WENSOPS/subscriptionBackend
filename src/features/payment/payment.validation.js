@@ -1,4 +1,4 @@
-import { body, param, validationResult } from "express-validator";
+import { body, param, header, validationResult } from "express-validator";
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -11,7 +11,7 @@ const validate = (req, res, next) => {
 };
 
 export const createPaymentValidation = [
-  /* packageId, couponCode from body */
+  /* packageId, couponCode, referralRewardId from body */
   body("packageId")
     .exists()
     .withMessage("packageId is required")
@@ -21,6 +21,10 @@ export const createPaymentValidation = [
     .optional({ nullable: true })
     .isString()
     .withMessage("couponCode must be a string"),
+  body("referralRewardId")
+    .optional({ nullable: true })
+    .isInt({ gt: 0 })
+    .withMessage("referralRewardId must be a positive integer"),
   validate,
 ];
 
@@ -31,5 +35,21 @@ export const verifyPaymentValidation = [
 
 export const paramsIdValidation = [
   param("id").exists().withMessage("id is required"),
+  validate,
+];
+
+export const handleWebhookValidation = [
+  header("x-webhook-signature")
+    .exists()
+    .withMessage("x-webhook-signature is required")
+    .isString()
+    .notEmpty()
+    .withMessage("x-webhook-signature cannot be empty"),
+  header("x-webhook-timestamp")
+    .exists()
+    .withMessage("x-webhook-timestamp is required")
+    .isString()
+    .notEmpty()
+    .withMessage("x-webhook-timestamp cannot be empty"),
   validate,
 ];

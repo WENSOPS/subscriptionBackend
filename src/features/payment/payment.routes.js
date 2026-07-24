@@ -17,7 +17,11 @@ router.get(
   paymentValidation.verifyPaymentValidation,
   paymentController.verifyPayment,
 );
-router.post("/webhook", paymentController.handleWebhook); // No auth, Cashfree calls this
+router.post(
+  "/webhook",
+  paymentValidation.handleWebhookValidation,
+  paymentController.handleWebhook,
+);
 router.get(
   "/",
   authMiddleware(["admin", "ops"]),

@@ -96,11 +96,19 @@ export const getUserReferralSummary = async (req, res) => {
 
 export const applyReferralCode = async (req, res) => {
     const { referralCode } = req.body;
+    const { category } = req.query;
     const userId = req.user?.userId;
 
     if (!referralCode || typeof referralCode !== "string") {
         return errorResponse(res, "Referral code is required", 200);
     }
+
+    if (!category || typeof category !== "string") {
+        return errorResponse(res, "category query parameter is required", 200);
+    }
+
+    const cleanCategory = category.trim().toLowerCase();
+    const safeCategoryKey = cleanCategory.replace(/[^a-zA-Z0-9]/g, "_");
 
     try {
         // 1. Fetch referee user (the user applying the code)
@@ -118,14 +126,6 @@ export const applyReferralCode = async (req, res) => {
         }
 
         // 2. Fetch referrer user first to validate code existence and self-referral
-        let category = "general";
-        if (referralCode.includes("_")) {
-            const prefix = referralCode.split("_")[0].toUpperCase();
-            if (prefix === "MEMB") category = "membership";
-            else if (prefix === "WELC") category = "welcome india";
-        }
-        const safeCategoryKey = category.replace(/[^a-zA-Z0-9]/g, "_");
-
         const referrerUser = await prisma.user.findFirst({
             where: {
                 referralCode: {
@@ -169,12 +169,12 @@ export const applyReferralCode = async (req, res) => {
             );
         }
 
-        // 6. Find matched active referral program that has signup rewards enabled
+        // 6. Find matched active referral program for that category
         const now = new Date();
         const activeProgram = await prisma.referralProgram.findFirst({
             where: {
+                packageCategory: cleanCategory,
                 programStatus: "active",
-                rewardOnSignup: true,
                 OR: [
                     { startDate: null },
                     { startDate: { lte: now } }
@@ -194,26 +194,32 @@ export const applyReferralCode = async (req, res) => {
             },
         });
 
-        if (activeProgram) {
-            // 6a. Check program-wide limit (maxTotalRedemptions)
-            if (
-                activeProgram.maxTotalRedemptions !== null &&
-                activeProgram.totalRedemptionCount >= activeProgram.maxTotalRedemptions
-            ) {
-                return errorResponse(res, "This referral program has reached its maximum limit", 200);
-            }
+        if (!activeProgram) {
+            return errorResponse(
+                res,
+                `No active referral program found for category "${cleanCategory}"`,
+                200
+            );
+        }
 
-            // 6b. Check per-user referrer limit (maxRedemptionsPerUser)
-            if (activeProgram.maxRedemptionsPerUser !== null) {
-                const referrerUsageCount = await prisma.trackReferral.count({
-                    where: {
-                        referrerUserId: referrerUser.id,
-                        referralProgramId: activeProgram.id,
-                    },
-                });
-                if (referrerUsageCount >= activeProgram.maxRedemptionsPerUser) {
-                    return errorResponse(res, "This referral code has reached its usage limit", 200);
-                }
+        // 6a. Check program-wide limit (maxTotalRedemptions)
+        if (
+            activeProgram.maxTotalRedemptions !== null &&
+            activeProgram.totalRedemptionCount >= activeProgram.maxTotalRedemptions
+        ) {
+            return errorResponse(res, "This referral program has reached its maximum limit", 200);
+        }
+
+        // 6b. Check per-user referrer limit (maxRedemptionsPerUser)
+        if (activeProgram.maxRedemptionsPerUser !== null) {
+            const referrerUsageCount = await prisma.trackReferral.count({
+                where: {
+                    referrerUserId: referrerUser.id,
+                    referralProgramId: activeProgram.id,
+                },
+            });
+            if (referrerUsageCount >= activeProgram.maxRedemptionsPerUser) {
+                return errorResponse(res, "This referral code has reached its usage limit", 200);
             }
         }
 
@@ -224,8 +230,8 @@ export const applyReferralCode = async (req, res) => {
         });
 
         // 8. Trigger signup rewards if configured
-        if (activeProgram && activeProgram.rewardOnSignup) {
-            await maybeCreateSignupReward(referrerUser.id, refereeUser.id);
+        if (activeProgram.rewardOnSignup) {
+            await maybeCreateSignupReward(referrerUser.id, refereeUser.id, cleanCategory);
         }
 
         return ok(res, null, "Referral code applied successfully");

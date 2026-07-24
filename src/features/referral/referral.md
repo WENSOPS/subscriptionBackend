@@ -115,12 +115,12 @@ Verify that referral codes are generated on-demand per category and stored insid
 Verify code application logic, signup reward issuance, and restrictions.
 
 #### Test 3.1: Self-Referral Validation (Expect: Block)
-* Logged in as User A (`referralCode: USERA1B2`).
-* **Method & Endpoint**: `POST /referral/apply`
+* Logged in as User A (with membership code generated, e.g., `MEMB_USERA1234`).
+* **Method & Endpoint**: `POST /referral/apply?category=membership`
 * **Payload**:
 ```json
 {
-  "referralCode": "USERA1B2"
+  "referralCode": "MEMB_USERA1234"
 }
 ```
 * **Expected Response (200 OK)**:
@@ -134,12 +134,12 @@ Verify code application logic, signup reward issuance, and restrictions.
 ```
 
 #### Test 3.2: Apply Code Successfully (Expect: Success)
-* Logged in as User B (`referralCode: USERB567`).
-* **Method & Endpoint**: `POST /referral/apply`
+* Logged in as User B.
+* **Method & Endpoint**: `POST /referral/apply?category=membership`
 * **Payload**:
 ```json
 {
-  "referralCode": "USERA1B2" // User A's code
+  "referralCode": "MEMB_USERA1234" // User A's code
 }
 ```
 * **Expected Response (200 OK)**:
@@ -153,14 +153,17 @@ Verify code application logic, signup reward issuance, and restrictions.
 ```
 * **Verification (Database Checks)**:
   1. User B's record in table `User` should have `referredByUserId` set to User A's ID.
-  2. Table `ReferralReward` should have:
-     * One row for User A (Referrer): `rewardAmountINR: 200`.
-     * One row for User B (Referee): `rewardAmountINR: 100`.
-  3. Table `TrackReferral` should have an audit row with `triggeredBySignup: true` and snapshots of rewards.
+  2. If the active program for `"membership"` has `rewardOnSignup: true`:
+     * Table `ReferralReward` will contain:
+       * One row for User A (Referrer): `rewardAmountINR: 200`.
+       * One row for User B (Referee): `rewardAmountINR: 100`.
+     * Table `TrackReferral` will contain an audit row with `triggeredBySignup: true` and snapshots of rewards.
+  3. If the active program for `"membership"` has `rewardOnSignup: false`:
+     * **No** rewards are generated at this stage. (They will be generated during Scenario 5 when User B purchases the package).
 
 #### Test 3.3: Apply Code a Second Time (Expect: Blocked)
 * Logged in as User B again.
-* **Method & Endpoint**: `POST /referral/apply`
+* **Method & Endpoint**: `POST /referral/apply?category=membership`
 * **Payload**: Same payload.
 * **Expected Response (200 OK)**:
 ```json
