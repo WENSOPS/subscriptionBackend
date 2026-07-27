@@ -9,22 +9,18 @@ const generateRandomString = (length = 4) => {
   return result;
 };
 
-export const generateReferralCode = async (name, category = "general") => {
+export const generateReferralCode = async (category = "general") => {
   const cleanCategory = category.trim().toLowerCase();
   const safeCategoryKey = cleanCategory.replace(/[^a-zA-Z0-9]/g, "_");
-  const categoryPrefix = cleanCategory.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
 
-  let userPrefix = "USER";
-  if (name) {
-    const cleanName = name.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
-    if (cleanName.length > 0) {
-      userPrefix = cleanName.slice(0, 5);
-    }
+  let categoryPrefix = cleanCategory.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
+  if (cleanCategory === "membership" || cleanCategory === "welcome india" || cleanCategory === "welcome_india") {
+    categoryPrefix = "MEMB";
   }
 
   let attempts = 0;
   while (attempts < 10) {
-    const code = `${categoryPrefix}_${userPrefix}${generateRandomString(4)}`;
+    const code = `${categoryPrefix}_${generateRandomString(6)}`;
     const existing = await prisma.user.findFirst({
       where: {
         referralCode: {
@@ -39,7 +35,9 @@ export const generateReferralCode = async (name, category = "general") => {
     }
     attempts++;
   }
-  return `${categoryPrefix}_${userPrefix}${Date.now().toString().slice(-4)}`;
+
+  // Fallback — timestamp suffix guarantees uniqueness
+  return `${categoryPrefix}_${generateRandomString(4)}${Date.now().toString().slice(-4)}`;
 };
 
 export const findActiveProgramForPackage = async (packageId, customCategory = null) => {
@@ -71,17 +69,34 @@ export const findActiveProgramForPackage = async (packageId, customCategory = nu
     ]
   };
 
+  const includeRelations = {
+    referrerAllowedPackages: true,
+    refereeAllowedPackages: true,
+    referrerTriggerPackages: true,
+  };
+
   if (category) {
-    where.packageCategory = category;
+    let activeProgram = await prisma.referralProgram.findFirst({
+      where: { ...where, packageCategory: category },
+      include: includeRelations,
+    });
+
+    if (!activeProgram) {
+      activeProgram = await prisma.referralProgram.findFirst({
+        where: {
+          ...where,
+          packageCategory: { in: ["all", "ALL"] },
+        },
+        include: includeRelations,
+      });
+    }
+
+    return activeProgram;
   }
 
   const activeProgram = await prisma.referralProgram.findFirst({
     where,
-    include: {
-      referrerAllowedPackages: true,
-      refereeAllowedPackages: true,
-      referrerTriggerPackages: true,
-    }
+    include: includeRelations,
   });
 
   return activeProgram;
@@ -187,22 +202,22 @@ export const maybeCreateSignupReward = async (referrerId, refereeId, category = 
         referrerRewardTypeSnapshot: activeProgram.referrerRewardType,
         referrerRewardSnapshot: referrerReward
           ? {
-              id: referrerReward.id,
-              rewardCalcType: referrerReward.rewardCalcType,
-              rewardValue: referrerReward.rewardValue,
-              rewardAmountINR: referrerReward.rewardAmountINR,
-              eligiblePackageIds: referrerReward.eligiblePackageIds,
-            }
+            id: referrerReward.id,
+            rewardCalcType: referrerReward.rewardCalcType,
+            rewardValue: referrerReward.rewardValue,
+            rewardAmountINR: referrerReward.rewardAmountINR,
+            eligiblePackageIds: referrerReward.eligiblePackageIds,
+          }
           : null,
         refereeRewardTypeSnapshot: activeProgram.refereeRewardType,
         refereeRewardSnapshot: refereeReward
           ? {
-              id: refereeReward.id,
-              rewardCalcType: refereeReward.rewardCalcType,
-              rewardValue: refereeReward.rewardValue,
-              rewardAmountINR: refereeReward.rewardAmountINR,
-              eligiblePackageIds: refereeReward.eligiblePackageIds,
-            }
+            id: refereeReward.id,
+            rewardCalcType: refereeReward.rewardCalcType,
+            rewardValue: refereeReward.rewardValue,
+            rewardAmountINR: refereeReward.rewardAmountINR,
+            eligiblePackageIds: refereeReward.eligiblePackageIds,
+          }
           : null,
         referrerReferralRewardId: referrerReward ? referrerReward.id : null,
         triggeringOrderId: null,

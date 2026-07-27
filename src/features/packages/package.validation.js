@@ -54,6 +54,13 @@ export const createPackageValidationRules = () => {
       .withMessage("GST must be a non-negative float")
       .toFloat(),
 
+    body("category")
+      .optional({ nullable: true })
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Category must be a non-empty string"),
+
     body("images")
       .optional()
       .isArray({ max: 10 })

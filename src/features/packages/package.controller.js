@@ -24,7 +24,8 @@ const signPackageMedia = async (pkg) => {
 
   // Sign thumbnail
   pkg.thumbnailUrl = pkg.thumbnailUrlKey
-    ? (pkg.thumbnailUrlKey.startsWith("/") || pkg.thumbnailUrlKey.startsWith("http")
+    ? pkg.thumbnailUrlKey.startsWith("/") ||
+      pkg.thumbnailUrlKey.startsWith("http")
       ? pkg.thumbnailUrlKey
       : await getSignedUrl(
           s3Client,
@@ -32,7 +33,7 @@ const signPackageMedia = async (pkg) => {
             Bucket: process.env.S3_BUCKET,
             Key: pkg.thumbnailUrlKey,
           }),
-        ))
+        )
     : null;
 
   // Sign packageMedia relation if loaded
@@ -43,15 +44,16 @@ const signPackageMedia = async (pkg) => {
         type: media.type,
         order: media.order,
         urlKey: media.urlKey,
-        url: media.urlKey.startsWith("/") || media.urlKey.startsWith("http")
-          ? media.urlKey
-          : await getSignedUrl(
-              s3Client,
-              new GetObjectCommand({
-                Bucket: process.env.S3_BUCKET,
-                Key: media.urlKey,
-              }),
-            ),
+        url:
+          media.urlKey.startsWith("/") || media.urlKey.startsWith("http")
+            ? media.urlKey
+            : await getSignedUrl(
+                s3Client,
+                new GetObjectCommand({
+                  Bucket: process.env.S3_BUCKET,
+                  Key: media.urlKey,
+                }),
+              ),
       })),
     );
 
@@ -407,6 +409,7 @@ export const updatePackage = async (req, res) => {
     existingVideoKeys, // kept video S3 keys
     termsAndConditions,
     gst,
+    isActive,
   } = req.body;
 
   try {
@@ -450,6 +453,10 @@ export const updatePackage = async (req, res) => {
             ? parseInt(req.body.sequence)
             : undefined,
         gst,
+        ...(isActive !== undefined && { isActive: Boolean(isActive) }),
+        ...(category !== undefined && {
+          category: category ? category.trim().toLowerCase() : category,
+        }),
         ...(services && {
           packageServices: {
             deleteMany: {},
@@ -494,6 +501,7 @@ export const deletePackage = async (req, res) => {
     if (error.code === "P2025") {
       return notFound(res, "Package not found");
     }
+    console.log(error);
     return internalError(res, "Failed to delete package");
   }
 };

@@ -59,7 +59,7 @@ export const notFound = (res, message = "Resource not found") => {
 };
 
 export const badRequest = (res, message = "Bad request", errors = null) => {
-  return errorResponse(res, message, 200, errors);
+  return errorResponse(res, message, 400, errors);
 };
 
 export const unauthorized = (res, message = "Unauthorized access") => {

@@ -3,7 +3,13 @@ import { body, param, query, validationResult } from "express-validator";
 const validate = (req, res, next) => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+    const firstMsg = errors.array()[0]?.msg || "Validation error";
+    return res.status(400).json({
+      success: false,
+      statusCode: 400,
+      message: firstMsg,
+      errors: errors.array(),
+    });
   }
   next();
 };
@@ -93,7 +99,13 @@ export const createReferralProgramValidation = [
     .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("referrerRewardValue must be a non-negative number")
-    .toFloat(),
+    .toFloat()
+    .custom((value, { req }) => {
+      if (req.body.referrerRewardCalcType === "percentage" && value > 100) {
+        throw new Error("referrerRewardValue percentage must be 100% or less");
+      }
+      return true;
+    }),
   body("referrerPackageScope")
     .optional({ nullable: true })
     .isIn(["any", "custom"])
@@ -126,7 +138,13 @@ export const createReferralProgramValidation = [
     .optional({ nullable: true })
     .isFloat({ min: 0 })
     .withMessage("refereeRewardValue must be a non-negative number")
-    .toFloat(),
+    .toFloat()
+    .custom((value, { req }) => {
+      if (req.body.refereeRewardCalcType === "percentage" && value > 100) {
+        throw new Error("refereeRewardValue percentage must be 100% or less");
+      }
+      return true;
+    }),
   body("refereePackageScope")
     .optional({ nullable: true })
     .isIn(["any", "custom"])

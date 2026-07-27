@@ -33,7 +33,7 @@ app.use(
   cors({
     origin: ["http://localhost:3000", "http://localhost:3001", "*"], // ✅ exact frontend origin, no trailing slash
     credentials: true, // ✅ allow cookies/auth headers
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   }),
 );

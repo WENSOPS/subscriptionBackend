@@ -111,7 +111,7 @@ export const createOrder = async (req, res) => {
             snapshot = typeof track.refereeRewardSnapshot === "string"
               ? JSON.parse(track.refereeRewardSnapshot)
               : track.refereeRewardSnapshot;
-          } catch (e) {}
+          } catch (e) { }
           if (snapshot && snapshot.id === parsedReferralRewardId) {
             matchedProgram = track.referralProgram;
             break;
@@ -119,7 +119,12 @@ export const createOrder = async (req, res) => {
         }
       }
 
-      if (matchedProgram && matchedProgram.packageCategory !== packageData.category) {
+      if (
+        matchedProgram &&
+        matchedProgram.packageCategory &&
+        matchedProgram.packageCategory.toLowerCase() !== "all" &&
+        matchedProgram.packageCategory !== packageData.category
+      ) {
         return badRequest(
           res,
           `This referral reward belongs to a "${matchedProgram.packageCategory}" program and cannot be used for "${packageData.category || ""}" packages`
@@ -178,7 +183,7 @@ export const createOrder = async (req, res) => {
           //   req.user.role === "admin" || req.user.role === "ops"
           //     ? "ACTIVE"
           //     : "PENDING",
-          status:"PENDING",
+          status: "PENDING",
         },
       });
       // Mark coupon as used within the same transaction
@@ -320,7 +325,7 @@ export const handleWebhook = async (req, res) => {
     }
 
     const event = JSON.parse(rawBody);
-    
+
 
     if (event.type === "PAYMENT_SUCCESS_WEBHOOK") {
       const cashfreeOrderId = event.data.order.order_id;
@@ -383,17 +388,17 @@ export const handleWebhook = async (req, res) => {
           phone,
         );
 
-         try {
-           await ensureSubscriptionCreated({
-             userId: updatedOrder.userId,
-             packageId: updatedOrder.packageId,
-             paymentId: cashfreeOrderId,
-           });
+        try {
+          await ensureSubscriptionCreated({
+            userId: updatedOrder.userId,
+            packageId: updatedOrder.packageId,
+            paymentId: cashfreeOrderId,
+          });
 
-           await processReferralOnPayment(updatedOrder);
-         } catch (subErr) {
-           console.error("[webhook] Error creating subscription or processing referral:", subErr);
-         }
+          await processReferralOnPayment(updatedOrder);
+        } catch (subErr) {
+          console.error("[webhook] Error creating subscription or processing referral:", subErr);
+        }
 
       } catch (error) {
         console.error("[webhook] Error during PAYMENT_SUCCESS handling:", error);
@@ -419,6 +424,41 @@ export const handleWebhook = async (req, res) => {
     console.error("[webhook] Unhandled error:", err);
     return internalError(res, "Failed to process webhook");
   }
+};
+
+const enrichOrdersWithReferralReward = async (orders) => {
+  if (!orders) return orders;
+  const isArray = Array.isArray(orders);
+  const list = isArray ? orders : [orders];
+
+  const rewardIds = Array.from(
+    new Set(list.map((o) => o.appliedReferralRewardId).filter(Boolean))
+  );
+
+  if (rewardIds.length === 0) return orders;
+
+  const rewards = await prisma.referralReward.findMany({
+    where: { id: { in: rewardIds } },
+    select: {
+      id: true,
+      rewardCalcType: true,
+      rewardValue: true,
+      rewardAmountINR: true,
+    },
+  });
+
+  const rewardMap = {};
+  rewards.forEach((r) => {
+    rewardMap[r.id] = r;
+  });
+
+  list.forEach((o) => {
+    if (o.appliedReferralRewardId) {
+      o.referralRewardDetails = rewardMap[o.appliedReferralRewardId] || null;
+    }
+  });
+
+  return isArray ? list : list[0];
 };
 
 export const getAllPayments = async (req, res) => {
@@ -503,6 +543,8 @@ export const getAllPayments = async (req, res) => {
       }),
     ]);
 
+    await enrichOrdersWithReferralReward(payments);
+
     return ok(res, {
       payments,
       totalCount,
@@ -545,6 +587,8 @@ export const getPaymentById = async (req, res) => {
       return notFound(res, "Payment not found");
     }
 
+    await enrichOrdersWithReferralReward(payment);
+
     return ok(res, payment);
   } catch (err) {
     console.error("[getPaymentById] Error:", err);
@@ -570,6 +614,8 @@ export const getUserPayments = async (req, res) => {
       },
       orderBy: { createdAt: "desc" },
     });
+
+    await enrichOrdersWithReferralReward(payments);
 
     return ok(res, payments);
   } catch (err) {

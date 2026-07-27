@@ -143,18 +143,23 @@ export const verifyOtp = async (req, res) => {
     // 3. Delete OTP from Redis BEFORE DB transaction (prevent reuse)
     await deleteKey(`otp:${mobileNumber}`);
 
-    // 4. Upsert user — atomic by itself, no transaction needed
+    // 4. Upsert user — atomic, single DB hit
     const user = await prisma.user.upsert({
       where: { mobileNumber },
       update: {},
       create: { mobileNumber, role: "user" },
     });
 
-    // 5. Generate tokens OUTSIDE transaction (no DB connection held)
+    // 5. Detect new user — createdAt and updatedAt are identical on creation
+    const isNewUser = Math.abs(
+      user.createdAt.getTime() - user.updatedAt.getTime()
+    ) < 100; // 100ms threshold to avoid clock rounding issues
+
+    // 6. Generate tokens
     const { accessToken, refreshToken } =
       await generateAccessAndRefreshTokens(user);
 
-    // 6. Update refresh tokens — simple update, no transaction needed
+    // 7. Update refresh tokens
     const existingTokens = Array.isArray(user.refreshTokens)
       ? user.refreshTokens
       : [];
@@ -171,7 +176,7 @@ export const verifyOtp = async (req, res) => {
       },
     });
 
-    // 7. Set cookie and respond
+    // 8. Set cookie
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -181,15 +186,17 @@ export const verifyOtp = async (req, res) => {
 
     updatedUser.refreshTokens = undefined;
 
-    return ok(
-      res,
-      {
-        accessToken,
-        refreshToken,
-        user: updatedUser,
-      },
-      "OTP verified successfully",
-    );
+    const responseData = {
+      accessToken,
+      refreshToken,
+      user: updatedUser,
+    };
+
+    // 9. 201 for new user, 200 for existing
+    return isNewUser
+      ? created(res, responseData, "Account created successfully")
+      : ok(res, responseData, "OTP verified successfully");
+
   } catch (error) {
     console.error("Error in verifyOtp:", error);
     return internalError(res, "Failed to verify OTP");

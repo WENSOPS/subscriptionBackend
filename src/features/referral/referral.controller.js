@@ -1,6 +1,17 @@
 import { prisma } from "../../lib/prisma.js";
-import { ok, internalError, notFound, errorResponse, created } from "../../utils/response.js";
-import { maybeCreateSignupReward, generateReferralCode } from "./referral.service.js";
+import {
+    ok,
+    internalError,
+    notFound,
+    errorResponse,
+    created,
+    badRequest,
+    conflict,
+} from "../../utils/response.js";
+import {
+    maybeCreateSignupReward,
+    generateReferralCode,
+} from "./referral.service.js";
 
 export const getUserReferralSummary = async (req, res) => {
     const userId = req.user?.userId;
@@ -23,17 +34,12 @@ export const getUserReferralSummary = async (req, res) => {
             select: {
                 name: true,
                 referralCode: true,
-                referredUsers: {
-                    select: {
-                        id: true,
-                        name: true,
-                        mobileNumber: true,
-                        createdAt: true,
-                    },
-                },
+
                 referralRewards: {
                     select: {
                         id: true,
+                        rewardCalcType: true,
+                        rewardValue: true,
                         rewardAmountINR: true,
                         eligiblePackageIds: true,
                         isRedeemed: true,
@@ -47,44 +53,176 @@ export const getUserReferralSummary = async (req, res) => {
         }
 
         let codesObj = {};
-        if (user.referralCode && typeof user.referralCode === "object" && !Array.isArray(user.referralCode)) {
-            codesObj = { ...user.referralCode };
-        } else if (user.referralCode && typeof user.referralCode === "string") {
+        if (
+            user.referralCodes &&
+            typeof user.referralCodes === "object" &&
+            !Array.isArray(user.referralCodes)
+        ) {
+            codesObj = { ...user.referralCodes };
+        } else if (user.referralCodes && typeof user.referralCodes === "string") {
             try {
-                codesObj = JSON.parse(user.referralCode);
+                codesObj = JSON.parse(user.referralCodes);
             } catch (e) {
                 codesObj = {};
             }
         }
 
+        const isMembershipOrWelcome =
+            cleanCategory === "membership" ||
+            cleanCategory === "welcome india" ||
+            cleanCategory === "welcome_india";
+
         let categoryCode = codesObj[safeCategoryKey];
+        if (!categoryCode && isMembershipOrWelcome) {
+            categoryCode = codesObj["membership"] || codesObj["welcome_india"];
+        }
+
         if (!categoryCode) {
-            categoryCode = await generateReferralCode(user.name, cleanCategory);
-            codesObj[safeCategoryKey] = categoryCode;
+            categoryCode = await generateReferralCode(cleanCategory);
+            if (isMembershipOrWelcome) {
+                codesObj["membership"] = categoryCode;
+                codesObj["welcome_india"] = categoryCode;
+            } else {
+                codesObj[safeCategoryKey] = categoryCode;
+            }
+            await prisma.user.update({
+                where: { id: userId },
+                data: { referralCode: codesObj },
+            });
+        } else if (
+            isMembershipOrWelcome &&
+            (!codesObj["membership"] || !codesObj["welcome_india"])
+        ) {
+            codesObj["membership"] = categoryCode;
+            codesObj["welcome_india"] = categoryCode;
             await prisma.user.update({
                 where: { id: userId },
                 data: { referralCode: codesObj },
             });
         }
 
-        const referredUsers = (user.referredUsers || []).map((u) => {
-            let maskedMobile = u.mobileNumber || "";
-            if (maskedMobile.length > 2) {
-                maskedMobile =
-                    maskedMobile.slice(0, 2) + "x".repeat(Math.max(0, maskedMobile.length - 2));
+        // Query active referral program for this category
+        const activeProgram = await prisma.referralProgram.findFirst({
+            where: {
+                programStatus: "active",
+                packageCategory: cleanCategory,
+            },
+            include: {
+                referrerTriggerPackages: true,
+                referrerAllowedPackages: true,
+                refereeAllowedPackages: true,
+            },
+        });
+
+        // Collect all package IDs across program & rewards to batch-resolve package names
+        const packageIdsSet = new Set();
+
+        if (activeProgram) {
+            (activeProgram.referrerTriggerPackages || []).forEach((tp) =>
+                packageIdsSet.add(tp.packageId),
+            );
+            (activeProgram.referrerAllowedPackages || []).forEach((ap) =>
+                packageIdsSet.add(ap.packageId),
+            );
+            (activeProgram.refereeAllowedPackages || []).forEach((ap) =>
+                packageIdsSet.add(ap.packageId),
+            );
+        }
+
+        const rawRewards = user.referralRewards || [];
+        rawRewards.forEach((r) => {
+            let ids = [];
+            try {
+                ids = Array.isArray(r.eligiblePackageIds)
+                    ? r.eligiblePackageIds
+                    : JSON.parse(r.eligiblePackageIds || "[]");
+            } catch (e) {
+                ids = [];
             }
+            ids.forEach((id) => {
+                const num = Number(id);
+                if (!isNaN(num)) packageIdsSet.add(num);
+            });
+        });
+
+        const packageIds = Array.from(packageIdsSet);
+        let packageMap = {};
+        if (packageIds.length > 0) {
+            const pkgs = await prisma.package.findMany({
+                where: { id: { in: packageIds } },
+                select: { id: true, name: true },
+            });
+            pkgs.forEach((p) => {
+                packageMap[p.id] = p.name;
+            });
+        }
+
+        // Enrich rewards with eligiblePackageNames and eligiblePackages
+        const enrichedRewards = rawRewards.map((r) => {
+            let ids = [];
+            try {
+                ids = Array.isArray(r.eligiblePackageIds)
+                    ? r.eligiblePackageIds
+                    : JSON.parse(r.eligiblePackageIds || "[]");
+            } catch (e) {
+                ids = [];
+            }
+            const eligiblePackages = ids.map((id) => ({
+                id: Number(id),
+                name: packageMap[Number(id)] || `Package #${id}`,
+            }));
+            const eligiblePackageNames = eligiblePackages.map((p) => p.name);
+
             return {
-                id: u.id,
-                name: u.name,
-                mobileNumber: maskedMobile,
-                createdAt: u.createdAt,
+                ...r,
+                eligiblePackageIds: ids,
+                eligiblePackages,
+                eligiblePackageNames,
             };
         });
 
+        // Format active program summary if exists
+        let formattedActiveProgram = null;
+        if (activeProgram) {
+            formattedActiveProgram = {
+                id: activeProgram.id,
+                name: activeProgram.name,
+                packageCategory: activeProgram.packageCategory,
+                rewardOnSignup: activeProgram.rewardOnSignup,
+                referrerRewardType: activeProgram.referrerRewardType,
+                referrerRewardCalcType: activeProgram.referrerRewardCalcType,
+                referrerRewardValue: activeProgram.referrerRewardValue,
+                referrerPackageScope: activeProgram.referrerPackageScope,
+                refereeRewardType: activeProgram.refereeRewardType,
+                refereeRewardCalcType: activeProgram.refereeRewardCalcType,
+                refereeRewardValue: activeProgram.refereeRewardValue,
+                refereePackageScope: activeProgram.refereePackageScope,
+                referrerTriggerPackages: (
+                    activeProgram.referrerTriggerPackages || []
+                ).map((tp) => ({
+                    packageId: tp.packageId,
+                    packageName: packageMap[tp.packageId] || `Package #${tp.packageId}`,
+                })),
+                referrerAllowedPackages: (
+                    activeProgram.referrerAllowedPackages || []
+                ).map((ap) => ({
+                    packageId: ap.packageId,
+                    packageName: packageMap[ap.packageId] || `Package #${ap.packageId}`,
+                })),
+                refereeAllowedPackages: (
+                    activeProgram.refereeAllowedPackages || []
+                ).map((ap) => ({
+                    packageId: ap.packageId,
+                    packageName: packageMap[ap.packageId] || `Package #${ap.packageId}`,
+                })),
+            };
+        }
+
         const data = {
             referralCode: categoryCode,
-            referredUsers,
-            rewards: user.referralRewards || [],
+
+            rewards: enrichedRewards,
+            activeProgram: formattedActiveProgram,
         };
 
         return ok(res, data);
@@ -126,7 +264,7 @@ export const applyReferralCode = async (req, res) => {
         }
 
         // 2. Fetch referrer user first to validate code existence and self-referral
-        const referrerUser = await prisma.user.findFirst({
+        let referrerUser = await prisma.user.findFirst({
             where: {
                 referralCode: {
                     path: `$.${safeCategoryKey}`,
@@ -139,19 +277,34 @@ export const applyReferralCode = async (req, res) => {
         });
 
         if (!referrerUser) {
-            return errorResponse(
-                res,
-                "Invalid referral code",
-                200
-            );
+            const potentialReferrers = await prisma.user.findMany({
+                where: {
+                    referralCode: {
+                        not: prisma.DbNull,
+                    },
+                },
+                select: {
+                    id: true,
+                    referralCode: true,
+                },
+            });
+
+            referrerUser = potentialReferrers.find((u) => {
+                if (!u.referralCode) return false;
+                const codesObj =
+                    typeof u.referralCode === "string"
+                        ? JSON.parse(u.referralCode)
+                        : u.referralCode;
+                return Object.values(codesObj).includes(referralCode);
+            });
+        }
+
+        if (!referrerUser) {
+            return errorResponse(res, "Invalid referral code", 200);
         }
 
         if (referrerUser.id === userId) {
-            return errorResponse(
-                res,
-                "You cannot refer yourself",
-                200
-            );
+            return errorResponse(res, "You cannot refer yourself", 200);
         }
 
         // 3. check if user has already applied a code
@@ -165,28 +318,26 @@ export const applyReferralCode = async (req, res) => {
             return errorResponse(
                 res,
                 "Referral code can only be applied within 2 days of registration",
-                200
+                200,
             );
         }
 
-        // 6. Find matched active referral program for that category
+        // 6. Find matched active referral program for that category or "all"
         const now = new Date();
-        const activeProgram = await prisma.referralProgram.findFirst({
+        const baseProgramWhere = {
+            programStatus: "active",
+            OR: [{ startDate: null }, { startDate: { lte: now } }],
+            AND: [
+                {
+                    OR: [{ endDate: null }, { endDate: { gte: now } }],
+                },
+            ],
+        };
+
+        let activeProgram = await prisma.referralProgram.findFirst({
             where: {
                 packageCategory: cleanCategory,
-                programStatus: "active",
-                OR: [
-                    { startDate: null },
-                    { startDate: { lte: now } }
-                ],
-                AND: [
-                    {
-                        OR: [
-                            { endDate: null },
-                            { endDate: { gte: now } }
-                        ]
-                    }
-                ]
+                ...baseProgramWhere,
             },
             include: {
                 referrerAllowedPackages: true,
@@ -195,10 +346,23 @@ export const applyReferralCode = async (req, res) => {
         });
 
         if (!activeProgram) {
+            activeProgram = await prisma.referralProgram.findFirst({
+                where: {
+                    packageCategory: { in: ["all", "ALL"] },
+                    ...baseProgramWhere,
+                },
+                include: {
+                    referrerAllowedPackages: true,
+                    refereeAllowedPackages: true,
+                },
+            });
+        }
+
+        if (!activeProgram) {
             return errorResponse(
                 res,
                 `No active referral program found for category "${cleanCategory}"`,
-                200
+                200,
             );
         }
 
@@ -207,7 +371,11 @@ export const applyReferralCode = async (req, res) => {
             activeProgram.maxTotalRedemptions !== null &&
             activeProgram.totalRedemptionCount >= activeProgram.maxTotalRedemptions
         ) {
-            return errorResponse(res, "This referral program has reached its maximum limit", 200);
+            return errorResponse(
+                res,
+                "This referral program has reached its maximum limit",
+                200,
+            );
         }
 
         // 6b. Check per-user referrer limit (maxRedemptionsPerUser)
@@ -219,7 +387,11 @@ export const applyReferralCode = async (req, res) => {
                 },
             });
             if (referrerUsageCount >= activeProgram.maxRedemptionsPerUser) {
-                return errorResponse(res, "This referral code has reached its usage limit", 200);
+                return errorResponse(
+                    res,
+                    "This referral code has reached its usage limit",
+                    200,
+                );
             }
         }
 
@@ -231,7 +403,11 @@ export const applyReferralCode = async (req, res) => {
 
         // 8. Trigger signup rewards if configured
         if (activeProgram.rewardOnSignup) {
-            await maybeCreateSignupReward(referrerUser.id, refereeUser.id, cleanCategory);
+            await maybeCreateSignupReward(
+                referrerUser.id,
+                refereeUser.id,
+                cleanCategory,
+            );
         }
 
         return ok(res, null, "Referral code applied successfully");
@@ -266,8 +442,11 @@ export const createReferralProgram = async (req, res) => {
         } = req.body;
 
         // Required fields
-        if (!name) return errorResponse(res, "Program name is required", 200);
-        if (!packageCategory) return errorResponse(res, "Package category is required", 200);
+        if (!name) return badRequest(res, "Program name is required");
+        if (!packageCategory)
+            return badRequest(res, "Package category is required");
+
+        const cleanCategory = packageCategory.trim().toLowerCase();
 
         // Enum validations
         const validStatuses = ["active", "paused", "cancelled"];
@@ -276,31 +455,92 @@ export const createReferralProgram = async (req, res) => {
         const validScopes = ["any", "custom"];
 
         if (programStatus && !validStatuses.includes(programStatus))
-            return errorResponse(res, "Invalid programStatus value", 200);
+            return badRequest(res, "Invalid programStatus value");
         if (referrerRewardType && !validRewardTypes.includes(referrerRewardType))
-            return errorResponse(res, "Invalid referrerRewardType value", 200);
+            return badRequest(res, "Invalid referrerRewardType value");
         if (refereeRewardType && !validRewardTypes.includes(refereeRewardType))
-            return errorResponse(res, "Invalid refereeRewardType value", 200);
-        if (referrerRewardCalcType && !validCalcTypes.includes(referrerRewardCalcType))
-            return errorResponse(res, "Invalid referrerRewardCalcType value", 200);
-        if (refereeRewardCalcType && !validCalcTypes.includes(refereeRewardCalcType))
-            return errorResponse(res, "Invalid refereeRewardCalcType value", 200);
+            return badRequest(res, "Invalid refereeRewardType value");
+        if (
+            referrerRewardCalcType &&
+            !validCalcTypes.includes(referrerRewardCalcType)
+        )
+            return badRequest(res, "Invalid referrerRewardCalcType value");
+        if (
+            refereeRewardCalcType &&
+            !validCalcTypes.includes(refereeRewardCalcType)
+        )
+            return badRequest(res, "Invalid refereeRewardCalcType value");
         if (referrerPackageScope && !validScopes.includes(referrerPackageScope))
-            return errorResponse(res, "Invalid referrerPackageScope value", 200);
+            return badRequest(res, "Invalid referrerPackageScope value");
         if (refereePackageScope && !validScopes.includes(refereePackageScope))
-            return errorResponse(res, "Invalid refereePackageScope value", 200);
+            return badRequest(res, "Invalid refereePackageScope value");
 
-        // Only one active program per packageCategory allowed
+        // Date validation
+        if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+            return badRequest(res, "Start date cannot be later than end date");
+        }
+
+        // Percentage validation
+        if (
+            referrerRewardType !== "none" &&
+            referrerRewardCalcType === "percentage" &&
+            parseFloat(referrerRewardValue) > 100
+        ) {
+            return badRequest(res, "Referrer reward percentage must be 100% or less");
+        }
+        if (
+            refereeRewardType !== "none" &&
+            refereeRewardCalcType === "percentage" &&
+            parseFloat(refereeRewardValue) > 100
+        ) {
+            return badRequest(res, "Referee reward percentage must be 100% or less");
+        }
+
+        // Custom scope package validation
+        if (
+            referrerPackageScope === "custom" &&
+            (!Array.isArray(referrerAllowedPackageIds) ||
+                referrerAllowedPackageIds.length === 0)
+        ) {
+            return badRequest(
+                res,
+                "Please select at least one package for Referrer Allowed Packages when scope is set to custom",
+            );
+        }
+        if (
+            refereePackageScope === "custom" &&
+            (!Array.isArray(refereeAllowedPackageIds) ||
+                refereeAllowedPackageIds.length === 0)
+        ) {
+            return badRequest(
+                res,
+                "Please select at least one package for Referee Allowed Packages when scope is set to custom",
+            );
+        }
+        if (
+            !rewardOnSignup &&
+            (!Array.isArray(referrerTriggerPackageIds) ||
+                referrerTriggerPackageIds.length === 0)
+        ) {
+            return badRequest(
+                res,
+                "Please select at least one package for Referrer Trigger Packages when reward trigger is set to package purchase",
+            );
+        }
+
+        // Only one active program per packageCategory allowed (case-insensitive check)
         if (programStatus === "active") {
             const existing = await prisma.referralProgram.findFirst({
-                where: { packageCategory, programStatus: "active" },
-                select: { id: true },
+                where: {
+                    programStatus: "active",
+                    packageCategory: cleanCategory,
+                },
+                select: { id: true, name: true, packageCategory: true },
             });
             if (existing) {
-                return errorResponse(
+                return conflict(
                     res,
-                    `An active referral program already exists for category "${packageCategory}"`,
-                    200
+                    `An active referral program already exists for category "${cleanCategory}" (Program #${existing.id}: "${existing.name}")`,
                 );
             }
         }
@@ -312,25 +552,39 @@ export const createReferralProgram = async (req, res) => {
                 startDate: startDate ? new Date(startDate) : null,
                 endDate: endDate ? new Date(endDate) : null,
                 programStatus,
-                maxTotalRedemptions: maxTotalRedemptions != null ? parseInt(maxTotalRedemptions, 10) : null,
-                maxRedemptionsPerUser: maxRedemptionsPerUser != null ? parseInt(maxRedemptionsPerUser, 10) : null,
+                maxTotalRedemptions:
+                    maxTotalRedemptions != null
+                        ? parseInt(maxTotalRedemptions, 10)
+                        : null,
+                maxRedemptionsPerUser:
+                    maxRedemptionsPerUser != null
+                        ? parseInt(maxRedemptionsPerUser, 10)
+                        : null,
                 rewardOnSignup: !!rewardOnSignup,
                 referrerRewardType: referrerRewardType || null,
                 referrerRewardCalcType: referrerRewardCalcType || null,
-                referrerRewardValue: referrerRewardValue != null ? parseFloat(referrerRewardValue) : null,
+                referrerRewardValue:
+                    referrerRewardValue != null ? parseFloat(referrerRewardValue) : null,
                 referrerPackageScope: referrerPackageScope || null,
                 refereeRewardType: refereeRewardType || null,
                 refereeRewardCalcType: refereeRewardCalcType || null,
-                refereeRewardValue: refereeRewardValue != null ? parseFloat(refereeRewardValue) : null,
+                refereeRewardValue:
+                    refereeRewardValue != null ? parseFloat(refereeRewardValue) : null,
                 refereePackageScope: refereePackageScope || null,
                 referrerTriggerPackages: {
-                    create: referrerTriggerPackageIds.map((id) => ({ packageId: parseInt(id, 10) })),
+                    create: referrerTriggerPackageIds.map((id) => ({
+                        packageId: parseInt(id, 10),
+                    })),
                 },
                 referrerAllowedPackages: {
-                    create: referrerAllowedPackageIds.map((id) => ({ packageId: parseInt(id, 10) })),
+                    create: referrerAllowedPackageIds.map((id) => ({
+                        packageId: parseInt(id, 10),
+                    })),
                 },
                 refereeAllowedPackages: {
-                    create: refereeAllowedPackageIds.map((id) => ({ packageId: parseInt(id, 10) })),
+                    create: refereeAllowedPackageIds.map((id) => ({
+                        packageId: parseInt(id, 10),
+                    })),
                 },
             },
             include: {
@@ -349,18 +603,56 @@ export const createReferralProgram = async (req, res) => {
 
 export const getReferralPrograms = async (req, res) => {
     try {
-        const programs = await prisma.referralProgram.findMany({
-            include: {
-                referrerTriggerPackages: true,
-                referrerAllowedPackages: true,
-                refereeAllowedPackages: true,
-            },
-            orderBy: {
-                createdAt: "desc",
-            },
-        });
+        const { status, programStatus, search, page = 1, limit = 10 } = req.query;
 
-        return ok(res, programs, "Referral programs retrieved successfully");
+        const targetStatus = status || programStatus;
+        const pageNum = parseInt(page, 10) || 1;
+        const limitNum = parseInt(limit, 10) || 10;
+        const skip = (pageNum - 1) * limitNum;
+
+        const where = {};
+
+        if (targetStatus && targetStatus.toLowerCase() !== "all") {
+            where.programStatus = targetStatus.toLowerCase();
+        }
+
+        if (search && typeof search === "string" && search.trim()) {
+            const cleanSearch = search.trim();
+            where.OR = [
+                { name: { contains: cleanSearch } },
+                { packageCategory: { contains: cleanSearch } },
+            ];
+        }
+
+        const [total, programs] = await Promise.all([
+            prisma.referralProgram.count({ where }),
+            prisma.referralProgram.findMany({
+                where,
+                skip,
+                take: limitNum,
+                include: {
+                    referrerTriggerPackages: true,
+                    referrerAllowedPackages: true,
+                    refereeAllowedPackages: true,
+                },
+                orderBy: {
+                    createdAt: "desc",
+                },
+            }),
+        ]);
+
+        const pagination = {
+            page: pageNum,
+            limit: limitNum,
+            total,
+            totalPages: Math.ceil(total / limitNum) || 1,
+        };
+
+        return ok(
+            res,
+            { programs, pagination },
+            "Referral programs retrieved successfully",
+        );
     } catch (error) {
         console.error("Error fetching referral programs:", error);
         return internalError(res, "Failed to fetch referral programs");
@@ -428,20 +720,69 @@ export const updateReferralProgram = async (req, res) => {
         const validCalcTypes = ["percentage", "fixed"];
         const validScopes = ["any", "custom"];
 
-        if (programStatus !== undefined && programStatus && !validStatuses.includes(programStatus))
-            return errorResponse(res, "Invalid programStatus value", 200);
-        if (referrerRewardType !== undefined && referrerRewardType && !validRewardTypes.includes(referrerRewardType))
-            return errorResponse(res, "Invalid referrerRewardType value", 200);
-        if (referrerRewardCalcType !== undefined && referrerRewardCalcType && !validCalcTypes.includes(referrerRewardCalcType))
-            return errorResponse(res, "Invalid referrerRewardCalcType value", 200);
-        if (referrerPackageScope !== undefined && referrerPackageScope && !validScopes.includes(referrerPackageScope))
-            return errorResponse(res, "Invalid referrerPackageScope value", 200);
-        if (refereeRewardType !== undefined && refereeRewardType && !validRewardTypes.includes(refereeRewardType))
-            return errorResponse(res, "Invalid refereeRewardType value", 200);
-        if (refereeRewardCalcType !== undefined && refereeRewardCalcType && !validCalcTypes.includes(refereeRewardCalcType))
-            return errorResponse(res, "Invalid refereeRewardCalcType value", 200);
-        if (refereePackageScope !== undefined && refereePackageScope && !validScopes.includes(refereePackageScope))
-            return errorResponse(res, "Invalid refereePackageScope value", 200);
+        if (
+            programStatus !== undefined &&
+            programStatus &&
+            !validStatuses.includes(programStatus)
+        )
+            return badRequest(res, "Invalid programStatus value");
+        if (
+            referrerRewardType !== undefined &&
+            referrerRewardType &&
+            !validRewardTypes.includes(referrerRewardType)
+        )
+            return badRequest(res, "Invalid referrerRewardType value");
+        if (
+            referrerRewardCalcType !== undefined &&
+            referrerRewardCalcType &&
+            !validCalcTypes.includes(referrerRewardCalcType)
+        )
+            return badRequest(res, "Invalid referrerRewardCalcType value");
+        if (
+            referrerPackageScope !== undefined &&
+            referrerPackageScope &&
+            !validScopes.includes(referrerPackageScope)
+        )
+            return badRequest(res, "Invalid referrerPackageScope value");
+        if (
+            refereeRewardType !== undefined &&
+            refereeRewardType &&
+            !validRewardTypes.includes(refereeRewardType)
+        )
+            return badRequest(res, "Invalid refereeRewardType value");
+        if (
+            refereeRewardCalcType !== undefined &&
+            refereeRewardCalcType &&
+            !validCalcTypes.includes(refereeRewardCalcType)
+        )
+            return badRequest(res, "Invalid refereeRewardCalcType value");
+        if (
+            refereePackageScope !== undefined &&
+            refereePackageScope &&
+            !validScopes.includes(refereePackageScope)
+        )
+            return badRequest(res, "Invalid refereePackageScope value");
+
+        // Date validation
+        if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
+            return badRequest(res, "Start date cannot be later than end date");
+        }
+
+        // Percentage validation
+        if (
+            referrerRewardType !== "none" &&
+            referrerRewardCalcType === "percentage" &&
+            parseFloat(referrerRewardValue) > 100
+        ) {
+            return badRequest(res, "Referrer reward percentage must be 100% or less");
+        }
+        if (
+            refereeRewardType !== "none" &&
+            refereeRewardCalcType === "percentage" &&
+            parseFloat(refereeRewardValue) > 100
+        ) {
+            return badRequest(res, "Referee reward percentage must be 100% or less");
+        }
 
         // Fetch existing program to check active status validation
         const existingProgram = await prisma.referralProgram.findUnique({
@@ -456,23 +797,31 @@ export const updateReferralProgram = async (req, res) => {
             return notFound(res, "Referral program not found");
         }
 
-        const targetStatus = programStatus !== undefined ? programStatus : existingProgram.programStatus;
-        const targetCategory = packageCategory !== undefined ? packageCategory : existingProgram.packageCategory;
+        const targetStatus =
+            programStatus !== undefined
+                ? programStatus
+                : existingProgram.programStatus;
+        const rawCategory =
+            packageCategory !== undefined
+                ? packageCategory
+                : existingProgram.packageCategory;
+        const targetCategory = rawCategory
+            ? rawCategory.trim().toLowerCase()
+            : existingProgram.packageCategory;
 
         if (targetStatus === "active") {
             const activeExist = await prisma.referralProgram.findFirst({
                 where: {
-                    packageCategory: targetCategory,
                     programStatus: "active",
+                    packageCategory: targetCategory,
                     id: { not: id },
                 },
-                select: { id: true },
+                select: { id: true, name: true, packageCategory: true },
             });
             if (activeExist) {
-                return errorResponse(
+                return conflict(
                     res,
-                    `An active referral program already exists for category "${targetCategory}"`,
-                    200
+                    `An active referral program already exists for category "${targetCategory}" (Program #${activeExist.id}: "${activeExist.name}")`,
                 );
             }
         }
@@ -480,36 +829,74 @@ export const updateReferralProgram = async (req, res) => {
         const updateData = {
             ...(name !== undefined && { name }),
             ...(packageCategory !== undefined && { packageCategory }),
-            ...(startDate !== undefined && { startDate: startDate ? new Date(startDate) : null }),
-            ...(endDate !== undefined && { endDate: endDate ? new Date(endDate) : null }),
+            ...(startDate !== undefined && {
+                startDate: startDate ? new Date(startDate) : null,
+            }),
+            ...(endDate !== undefined && {
+                endDate: endDate ? new Date(endDate) : null,
+            }),
             ...(programStatus !== undefined && { programStatus }),
-            ...(maxTotalRedemptions !== undefined && { maxTotalRedemptions: maxTotalRedemptions !== null ? parseInt(maxTotalRedemptions, 10) : null }),
-            ...(maxRedemptionsPerUser !== undefined && { maxRedemptionsPerUser: maxRedemptionsPerUser !== null ? parseInt(maxRedemptionsPerUser, 10) : null }),
+            ...(maxTotalRedemptions !== undefined && {
+                maxTotalRedemptions:
+                    maxTotalRedemptions !== null
+                        ? parseInt(maxTotalRedemptions, 10)
+                        : null,
+            }),
+            ...(maxRedemptionsPerUser !== undefined && {
+                maxRedemptionsPerUser:
+                    maxRedemptionsPerUser !== null
+                        ? parseInt(maxRedemptionsPerUser, 10)
+                        : null,
+            }),
             ...(rewardOnSignup !== undefined && { rewardOnSignup: !!rewardOnSignup }),
-            ...(referrerRewardType !== undefined && { referrerRewardType: referrerRewardType || null }),
-            ...(referrerRewardCalcType !== undefined && { referrerRewardCalcType: referrerRewardCalcType || null }),
-            ...(referrerRewardValue !== undefined && { referrerRewardValue: referrerRewardValue !== null ? parseFloat(referrerRewardValue) : null }),
-            ...(referrerPackageScope !== undefined && { referrerPackageScope: referrerPackageScope || null }),
-            ...(refereeRewardType !== undefined && { refereeRewardType: refereeRewardType || null }),
-            ...(refereeRewardCalcType !== undefined && { refereeRewardCalcType: refereeRewardCalcType || null }),
-            ...(refereeRewardValue !== undefined && { refereeRewardValue: refereeRewardValue !== null ? parseFloat(refereeRewardValue) : null }),
-            ...(refereePackageScope !== undefined && { refereePackageScope: refereePackageScope || null }),
+            ...(referrerRewardType !== undefined && {
+                referrerRewardType: referrerRewardType || null,
+            }),
+            ...(referrerRewardCalcType !== undefined && {
+                referrerRewardCalcType: referrerRewardCalcType || null,
+            }),
+            ...(referrerRewardValue !== undefined && {
+                referrerRewardValue:
+                    referrerRewardValue !== null ? parseFloat(referrerRewardValue) : null,
+            }),
+            ...(referrerPackageScope !== undefined && {
+                referrerPackageScope: referrerPackageScope || null,
+            }),
+            ...(refereeRewardType !== undefined && {
+                refereeRewardType: refereeRewardType || null,
+            }),
+            ...(refereeRewardCalcType !== undefined && {
+                refereeRewardCalcType: refereeRewardCalcType || null,
+            }),
+            ...(refereeRewardValue !== undefined && {
+                refereeRewardValue:
+                    refereeRewardValue !== null ? parseFloat(refereeRewardValue) : null,
+            }),
+            ...(refereePackageScope !== undefined && {
+                refereePackageScope: refereePackageScope || null,
+            }),
             ...(referrerTriggerPackageIds !== undefined && {
                 referrerTriggerPackages: {
                     deleteMany: {},
-                    create: (referrerTriggerPackageIds || []).map((id) => ({ packageId: parseInt(id, 10) })),
+                    create: (referrerTriggerPackageIds || []).map((id) => ({
+                        packageId: parseInt(id, 10),
+                    })),
                 },
             }),
             ...(referrerAllowedPackageIds !== undefined && {
                 referrerAllowedPackages: {
                     deleteMany: {},
-                    create: (referrerAllowedPackageIds || []).map((id) => ({ packageId: parseInt(id, 10) })),
+                    create: (referrerAllowedPackageIds || []).map((id) => ({
+                        packageId: parseInt(id, 10),
+                    })),
                 },
             }),
             ...(refereeAllowedPackageIds !== undefined && {
                 refereeAllowedPackages: {
                     deleteMany: {},
-                    create: (refereeAllowedPackageIds || []).map((id) => ({ packageId: parseInt(id, 10) })),
+                    create: (refereeAllowedPackageIds || []).map((id) => ({
+                        packageId: parseInt(id, 10),
+                    })),
                 },
             }),
         };
@@ -572,7 +959,7 @@ export const deleteReferralProgram = async (req, res) => {
             return ok(
                 res,
                 updatedProgram,
-                "Referral program has active history and has been marked as cancelled."
+                "Referral program has active history and has been marked as cancelled.",
             );
         }
 
@@ -660,12 +1047,10 @@ export const getReferralProgramTracks = async (req, res) => {
                 page,
                 limit,
             },
-            "Referral program audit tracks retrieved successfully"
+            "Referral program audit tracks retrieved successfully",
         );
     } catch (error) {
         console.error("Error fetching referral program tracks:", error);
         return internalError(res, "Failed to fetch referral program tracks");
     }
 };
-
-
