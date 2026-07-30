@@ -375,7 +375,7 @@ model ReferralTriggerPackage {
   referralProgramId Int
   packageId         Int
   referralProgram   ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
-
+  packageNameSnapshot String?
   @@unique([referralProgramId, packageId])
 }
 
@@ -383,6 +383,7 @@ model ReferralProgramReferrerPackage {
   id                Int             @id @default(autoincrement())
   referralProgramId Int
   packageId         Int
+  packageNameSnapshot String?
   referralProgram   ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
 }
 
@@ -390,6 +391,7 @@ model ReferralProgramRefereePackage {
   id                Int             @id @default(autoincrement())
   referralProgramId Int
   packageId         Int
+  packageNameSnapshot String?
   referralProgram   ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
 }
 

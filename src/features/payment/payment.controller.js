@@ -119,17 +119,25 @@ export const createOrder = async (req, res) => {
         }
       }
 
+      // membership ↔ welcome_india are treated as the same group.
+      const MEMBERSHIP_GROUP = new Set(["membership", "welcome_india"]);
+      const inSameGroup = (a, b) =>
+        a === b ||
+        (MEMBERSHIP_GROUP.has(a?.toLowerCase()) &&
+          MEMBERSHIP_GROUP.has(b?.toLowerCase()));
+
       if (
         matchedProgram &&
         matchedProgram.packageCategory &&
         matchedProgram.packageCategory.toLowerCase() !== "all" &&
-        matchedProgram.packageCategory !== packageData.category
+        !inSameGroup(matchedProgram.packageCategory, packageData.category)
       ) {
         return badRequest(
           res,
           `This referral reward belongs to a "${matchedProgram.packageCategory}" program and cannot be used for "${packageData.category || ""}" packages`
         );
       }
+
 
       if (referralReward.rewardCalcType === "fixed") {
         referralDiscountAmount = referralReward.rewardValue;
@@ -249,7 +257,7 @@ export const verifyPayment = async (req, res) => {
     return ok(res, {
       orderId: order.id,
       status: order.status,
-      amount: order.amount,
+      amount: order.finalAmount,
       packageId: order.packageId,
     });
   }
@@ -278,13 +286,13 @@ export const verifyPayment = async (req, res) => {
       sendWhatsAppTemplate({
         to: phone,
         templateName: "payment_confirmed_client",
-        templateParams: [customerName, orderId, order.amount, formattedDate],
+        templateParams: [customerName, orderId, order.finalAmount, formattedDate],
       });
 
       sendWhatsAppTemplateToBroadcast(
         "Testing Office",
         "payment_confirmed_team",
-        [orderId, customerName, order.amount, formattedDate],
+        [orderId, customerName, order.finalAmount, formattedDate],
         phone,
       );
 
@@ -305,7 +313,7 @@ export const verifyPayment = async (req, res) => {
   return ok(res, {
     orderId: order.id,
     status: order.status,
-    amount: order.amount,
+    amount: order.finalAmount,
     packageId: order.packageId,
   });
 };
@@ -378,13 +386,13 @@ export const handleWebhook = async (req, res) => {
         sendWhatsAppTemplate({
           to: phone,
           templateName: "payment_confirmed_client",
-          templateParams: [customerName, cashfreeOrderId, existingOrder.amount, formattedDate],
+          templateParams: [customerName, cashfreeOrderId, existingOrder.finalAmount, formattedDate],
         });
 
         sendWhatsAppTemplateToBroadcast(
           "Testing Office",
           "payment_confirmed_team",
-          [cashfreeOrderId, customerName, existingOrder.amount, formattedDate],
+          [cashfreeOrderId, customerName, existingOrder.finalAmount, formattedDate],
           phone,
         );
 
