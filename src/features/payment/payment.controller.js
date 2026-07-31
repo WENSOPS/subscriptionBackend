@@ -88,7 +88,7 @@ export const createOrder = async (req, res) => {
         return badRequest(res, "This referral reward is not eligible for the selected package");
       }
 
-      // Check program category mapping
+      // Check program category mapping — find which program this reward originated from
       const tracks = await prisma.trackReferral.findMany({
         where: {
           OR: [
@@ -119,23 +119,27 @@ export const createOrder = async (req, res) => {
         }
       }
 
-      // membership ↔ welcome_india are treated as the same group.
-      const MEMBERSHIP_GROUP = new Set(["membership", "welcome_india"]);
-      const inSameGroup = (a, b) =>
-        a === b ||
-        (MEMBERSHIP_GROUP.has(a?.toLowerCase()) &&
-          MEMBERSHIP_GROUP.has(b?.toLowerCase()));
+      if (matchedProgram && matchedProgram.packageCategory) {
+        const rewardCategory = matchedProgram.packageCategory.toLowerCase();
+        const packageCategory = (packageData.category || "").toLowerCase();
 
-      if (
-        matchedProgram &&
-        matchedProgram.packageCategory &&
-        matchedProgram.packageCategory.toLowerCase() !== "all" &&
-        !inSameGroup(matchedProgram.packageCategory, packageData.category)
-      ) {
-        return badRequest(
-          res,
-          `This referral reward belongs to a "${matchedProgram.packageCategory}" program and cannot be used for "${packageData.category || ""}" packages`
-        );
+        // "all" / "ALL" category rewards work on every package
+        const isAnyCategory = rewardCategory === "all" || rewardCategory === "ALL";
+
+        // membership ↔ welcome_india rewards are cross-compatible
+        const MEMBERSHIP_GROUP = new Set(["membership", "welcome_india"]);
+        const isCrossCompatible =
+          MEMBERSHIP_GROUP.has(rewardCategory) && MEMBERSHIP_GROUP.has(packageCategory);
+
+        // Exact same category match
+        const isSameCategory = rewardCategory === packageCategory;
+
+        if (!isAnyCategory && !isSameCategory && !isCrossCompatible) {
+          return badRequest(
+            res,
+            `This referral reward belongs to the "${matchedProgram.packageCategory}" program and cannot be used for "${packageData.category || ""}" packages`
+          );
+        }
       }
 
 

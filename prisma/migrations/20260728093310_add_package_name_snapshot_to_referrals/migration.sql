@@ -5,6 +5,7 @@
 
 */
 -- DropIndex
+ALTER TABLE `users` DROP INDEX `users_referralCode_key`;
 
 -- AlterTable
 ALTER TABLE `ReferralProgramRefereePackage` ADD COLUMN `packageNameSnapshot` VARCHAR(191) NULL;

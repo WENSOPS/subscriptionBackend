@@ -1,6 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 
-const generateRandomString = (length = 4) => {
+const generateRandomString = (length = 8) => {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
   for (let i = 0; i < length; i++) {
@@ -11,7 +11,6 @@ const generateRandomString = (length = 4) => {
 
 export const generateReferralCode = async (category = "general") => {
   const cleanCategory = category.trim().toLowerCase();
-  const safeCategoryKey = cleanCategory.replace(/[^a-zA-Z0-9]/g, "_");
 
   let categoryPrefix = cleanCategory.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
   if (cleanCategory === "membership" || cleanCategory === "welcome india" || cleanCategory === "welcome_india") {
@@ -20,13 +19,10 @@ export const generateReferralCode = async (category = "general") => {
 
   let attempts = 0;
   while (attempts < 10) {
-    const code = `${categoryPrefix}_${generateRandomString(6)}`;
-    const existing = await prisma.user.findFirst({
+    const code = `${categoryPrefix}_${generateRandomString(8)}`;
+    const existing = await prisma.userReferralCategoryTrack.findFirst({
       where: {
-        referralCode: {
-          path: `$.${safeCategoryKey}`,
-          equals: code,
-        },
+        referralCode: code,
       },
       select: { id: true },
     });
@@ -37,7 +33,7 @@ export const generateReferralCode = async (category = "general") => {
   }
 
   // Fallback — timestamp suffix guarantees uniqueness
-  return `${categoryPrefix}_${generateRandomString(4)}${Date.now().toString().slice(-4)}`;
+  return `${categoryPrefix}_${generateRandomString(8)}${Date.now().toString().slice(-4)}`;
 };
 
 export const findActiveProgramForPackage = async (packageId, customCategory = null) => {

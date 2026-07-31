@@ -20,7 +20,7 @@ model User {
   role                Role             @default(user)
   city                String?
   refreshTokens       Json?            // Store refresh tokens as a JSON array
-  referralCode        Json?            
+            
   referredByUserId    Int?
   referredByUser      User?            @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
   referredUsers       User[]           @relation("UserReferrals")
@@ -30,6 +30,8 @@ model User {
   subscriptions       Subscription[]
   trips               Trip[]
   bookings            Booking[]        // For emergency, later need to delete it
+  categoryReferralTracks UserReferralCategoryTrack[]
+  refereeAuditLogs    TrackReferral[]  @relation("RefereeTracks")
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
   @@map("users")
@@ -366,6 +368,7 @@ model ReferralProgram {
   refereePackageScope     PackageRewardType?
   refereeAllowedPackages  ReferralProgramRefereePackage[]
   referralEvents          TrackReferral[]
+  categoryReferralTracks  UserReferralCategoryTrack[]
   createdAt               DateTime              @default(now())
   updatedAt               DateTime              @updatedAt
 }
@@ -394,7 +397,25 @@ model ReferralProgramRefereePackage {
   packageNameSnapshot String?
   referralProgram   ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
 }
+model UserReferralCategoryTrack {
+  id                Int       @id @default(autoincrement())
+  userId            Int
+  referralProgramId Int
+  category          String    // snapshot of ReferralProgram.packageCategory
+  referralCode      String    @unique
+  redemptions       Int       @default(0)
+  maxRedemptions    Int?      // snapshot of ReferralProgram.maxRedemptionsPerUser
+  lastRedeemedAt    DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  referralProgram ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, referralProgramId])
+  @@index([category])
+  @@map("user_referral_category_track")
+}
 model TrackReferral {
   id                          Int         @id @default(autoincrement())
   referralProgramId           Int
@@ -413,6 +434,9 @@ model TrackReferral {
 
   referralProgram ReferralProgram @relation(fields: [referralProgramId], references: [id])
   referrer        User            @relation("ReferrerTracks", fields: [referrerUserId], references: [id])
+  referee         User            @relation("RefereeTracks", fields: [refereeUserId], references: [id])
+  @@index([referrerUserId])
+  @@index([refereeUserId])
 }
 
 model ReferralReward {

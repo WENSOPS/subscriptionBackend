@@ -7,7 +7,7 @@ export const getAdminDashboard = async (req, res) => {
     const [
       totalUsers,
       totalActiveSubscriptions,
-      totalBookings,
+      totalOrders,
       totalPackages,
       totalServices,
       totalCoupons,
@@ -19,7 +19,7 @@ export const getAdminDashboard = async (req, res) => {
       prisma.subscription.count({
         where: { status: "active" },
       }),
-      prisma.booking.count(),
+      prisma.order.count(),
       prisma.package.count(),
       prisma.service.count(),
       prisma.coupon.count(),
@@ -163,7 +163,7 @@ export const getAdminDashboard = async (req, res) => {
       stats: {
         totalUsers,
         activeSubscriptions: totalActiveSubscriptions,
-        totalBookings,
+        totalOrders,
         totalPackages,
         totalServices,
         totalCoupons,

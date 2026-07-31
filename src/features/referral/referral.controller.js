@@ -24,7 +24,6 @@ export const getUserReferralSummary = async (req, res) => {
     return errorResponse(res, "category query parameter is required", 200);
   }
   const cleanCategory = category.trim().toLowerCase();
-  const safeCategoryKey = cleanCategory.replace(/[^a-zA-Z0-9]/g, "_");
 
   try {
     const user = await prisma.user.findUnique({
@@ -33,8 +32,6 @@ export const getUserReferralSummary = async (req, res) => {
       },
       select: {
         name: true,
-        referralCode: true,
-
         referralRewards: {
           select: {
             id: true,
@@ -52,54 +49,13 @@ export const getUserReferralSummary = async (req, res) => {
       return notFound(res, "User not found");
     }
 
-    let codesObj = {};
-    if (
-      user.referralCodes &&
-      typeof user.referralCodes === "object" &&
-      !Array.isArray(user.referralCodes)
-    ) {
-      codesObj = { ...user.referralCodes };
-    } else if (user.referralCodes && typeof user.referralCodes === "string") {
-      try {
-        codesObj = JSON.parse(user.referralCodes);
-      } catch (e) {
-        codesObj = {};
-      }
-    }
-
+    // Normalize membership and welcome india to share the same category/prefix
     const isMembershipOrWelcome =
       cleanCategory === "membership" ||
       cleanCategory === "welcome india" ||
       cleanCategory === "welcome_india";
 
-    let categoryCode = codesObj[safeCategoryKey];
-    if (!categoryCode && isMembershipOrWelcome) {
-      categoryCode = codesObj["membership"] || codesObj["welcome_india"];
-    }
-
-    if (!categoryCode) {
-      categoryCode = await generateReferralCode(cleanCategory);
-      if (isMembershipOrWelcome) {
-        codesObj["membership"] = categoryCode;
-        codesObj["welcome_india"] = categoryCode;
-      } else {
-        codesObj[safeCategoryKey] = categoryCode;
-      }
-      await prisma.user.update({
-        where: { id: userId },
-        data: { referralCode: codesObj },
-      });
-    } else if (
-      isMembershipOrWelcome &&
-      (!codesObj["membership"] || !codesObj["welcome_india"])
-    ) {
-      codesObj["membership"] = categoryCode;
-      codesObj["welcome_india"] = categoryCode;
-      await prisma.user.update({
-        where: { id: userId },
-        data: { referralCode: codesObj },
-      });
-    }
+    // const targetCategory = isMembershipOrWelcome ? "membership" : cleanCategory;
 
     // Query active referral program for this category
     const activeProgram = await prisma.referralProgram.findFirst({
@@ -113,6 +69,40 @@ export const getUserReferralSummary = async (req, res) => {
         refereeAllowedPackages: true,
       },
     });
+
+    if (!activeProgram) {
+      return errorResponse(
+        res,
+        `No active referral program found for category "${cleanCategory}"`,
+        200,
+      );
+    }
+
+    // Find or create the category track for this user & active program
+    let track = await prisma.userReferralCategoryTrack.findUnique({
+      where: {
+        userId_referralProgramId: {
+          userId: userId,
+          referralProgramId: activeProgram.id,
+        },
+      },
+    });
+
+    if (!track) {
+      const categoryCode = await generateReferralCode(cleanCategory);
+      track = await prisma.userReferralCategoryTrack.create({
+        data: {
+          userId: userId,
+          referralProgramId: activeProgram.id,
+          category: cleanCategory,
+          referralCode: categoryCode,
+          maxRedemptions: activeProgram.maxRedemptionsPerUser,
+          redemptions: 0,
+        },
+      });
+    }
+
+    const categoryCode = track.referralCode;
 
     // Collect all package IDs across program & rewards to batch-resolve package names
     const packageIdsSet = new Set();
@@ -147,6 +137,7 @@ export const getUserReferralSummary = async (req, res) => {
 
     const packageIds = Array.from(packageIdsSet);
     let packageMap = {};
+
     if (packageIds.length > 0) {
       const pkgs = await prisma.package.findMany({
         where: { id: { in: packageIds } },
@@ -220,7 +211,6 @@ export const getUserReferralSummary = async (req, res) => {
 
     const data = {
       referralCode: categoryCode,
-
       rewards: enrichedRewards,
       activeProgram: formattedActiveProgram,
     };
@@ -237,6 +227,7 @@ export const applyReferralCode = async (req, res) => {
   const { category } = req.query;
   const userId = req.user?.userId;
 
+  // ── Input validation ──────────────────────────────────────────────────────
   if (!referralCode || typeof referralCode !== "string") {
     return errorResponse(res, "Referral code is required", 200);
   }
@@ -246,7 +237,6 @@ export const applyReferralCode = async (req, res) => {
   }
 
   const cleanCategory = category.trim().toLowerCase();
-  const safeCategoryKey = cleanCategory.replace(/[^a-zA-Z0-9]/g, "_");
 
   try {
     // 1. Fetch referee user (the user applying the code)
@@ -263,56 +253,12 @@ export const applyReferralCode = async (req, res) => {
       return notFound(res, "User not found");
     }
 
-    // 2. Fetch referrer user first to validate code existence and self-referral
-    let referrerUser = await prisma.user.findFirst({
-      where: {
-        referralCode: {
-          path: `$.${safeCategoryKey}`,
-          equals: referralCode,
-        },
-      },
-      select: {
-        id: true,
-      },
-    });
-
-    if (!referrerUser) {
-      const potentialReferrers = await prisma.user.findMany({
-        where: {
-          referralCode: {
-            not: prisma.DbNull,
-          },
-        },
-        select: {
-          id: true,
-          referralCode: true,
-        },
-      });
-
-      referrerUser = potentialReferrers.find((u) => {
-        if (!u.referralCode) return false;
-        const codesObj =
-          typeof u.referralCode === "string"
-            ? JSON.parse(u.referralCode)
-            : u.referralCode;
-        return Object.values(codesObj).includes(referralCode);
-      });
-    }
-
-    if (!referrerUser) {
-      return errorResponse(res, "Invalid referral code", 200);
-    }
-
-    if (referrerUser.id === userId) {
-      return errorResponse(res, "You cannot refer yourself", 200);
-    }
-
-    // 3. check if user has already applied a code
+    // 2. Check if user has already applied a referral code
     if (refereeUser.referredByUserId !== null) {
       return errorResponse(res, "Referral code has already been applied", 200);
     }
 
-    // 4. check registration date constraints (within 2 days of registration)
+    // 3. Check registration date constraint (within 2 days of registration)
     const twoDaysInMs = 2 * 24 * 60 * 60 * 1000;
     if (Date.now() - new Date(refereeUser.createdAt).getTime() > twoDaysInMs) {
       return errorResponse(
@@ -322,7 +268,43 @@ export const applyReferralCode = async (req, res) => {
       );
     }
 
-    // 6. Find matched active referral program for that category or "all"
+    // 4. Fetch the referrer's category track record using the referral code
+    const referrerTrack = await prisma.userReferralCategoryTrack.findFirst({
+      where: {
+        referralCode: referralCode,
+        category: cleanCategory,
+      },
+      include: {
+        user: {
+          select: { id: true },
+        },
+      },
+    });
+
+    if (!referrerTrack || !referrerTrack.user) {
+      return errorResponse(res, "Invalid referral code", 200);
+    }
+
+    const referrerUser = referrerTrack.user;
+
+    // 5. Prevent self-referral
+    if (referrerUser.id === userId) {
+      return errorResponse(res, "You cannot refer yourself", 200);
+    }
+
+    // 6. Check if the referral code has reached its per-code usage limit
+    if (
+      referrerTrack.maxRedemptions !== null &&
+      referrerTrack.redemptions >= referrerTrack.maxRedemptions
+    ) {
+      return errorResponse(
+        res,
+        "This referral code has reached its maximum usage limit",
+        200,
+      );
+    }
+
+    // 7. Find active referral program for this category (falls back to "all")
     const now = new Date();
     const baseProgramWhere = {
       programStatus: "active",
@@ -339,10 +321,6 @@ export const applyReferralCode = async (req, res) => {
         packageCategory: cleanCategory,
         ...baseProgramWhere,
       },
-      include: {
-        referrerAllowedPackages: true,
-        refereeAllowedPackages: true,
-      },
     });
 
     if (!activeProgram) {
@@ -350,10 +328,6 @@ export const applyReferralCode = async (req, res) => {
         where: {
           packageCategory: { in: ["all", "ALL"] },
           ...baseProgramWhere,
-        },
-        include: {
-          referrerAllowedPackages: true,
-          refereeAllowedPackages: true,
         },
       });
     }
@@ -366,7 +340,7 @@ export const applyReferralCode = async (req, res) => {
       );
     }
 
-    // 6a. Check program-wide limit (maxTotalRedemptions)
+    // 8. Check program-wide redemption limit
     if (
       activeProgram.maxTotalRedemptions !== null &&
       activeProgram.totalRedemptionCount >= activeProgram.maxTotalRedemptions
@@ -378,45 +352,70 @@ export const applyReferralCode = async (req, res) => {
       );
     }
 
-    // 6b. Check per-user referrer limit (maxRedemptionsPerUser)
-    if (activeProgram.maxRedemptionsPerUser !== null) {
-      const referrerUsageCount = await prisma.trackReferral.count({
+    // 9. Atomically apply referral:
+    //    - Set referredByUserId on referee (unique constraint prevents double-apply)
+    //    - Conditionally increment redemptions only if limit not yet reached
+    //      (guards against race condition on per-code limit)
+    const [, updatedTrack] = await prisma.$transaction([
+      prisma.user.update({
+        where: { id: userId },
+        data: { referredByUserId: referrerUser.id },
+      }),
+      prisma.userReferralCategoryTrack.updateMany({
         where: {
-          referrerUserId: referrerUser.id,
-          referralProgramId: activeProgram.id,
+          id: referrerTrack.id,
+          OR: [
+            { maxRedemptions: null },
+            { redemptions: { lt: referrerTrack.maxRedemptions } },
+          ],
         },
-      });
-      if (referrerUsageCount >= activeProgram.maxRedemptionsPerUser) {
-        return errorResponse(
-          res,
-          "This referral code has reached its usage limit",
-          200,
+        data: {
+          redemptions: { increment: 1 },
+          lastRedeemedAt: new Date(),
+        },
+      }),
+    ]);
+
+    // If updatedTrack.count === 0 the code hit its limit between our check
+    // and the transaction — roll back is automatic; return an error.
+    if (updatedTrack.count === 0) {
+      return errorResponse(
+        res,
+        "This referral code has reached its maximum usage limit",
+        200,
+      );
+    }
+
+    // 10. Trigger signup rewards if configured
+    if (activeProgram.rewardOnSignup) {
+      try {
+        await maybeCreateSignupReward(
+          referrerUser.id,
+          refereeUser.id,
+          cleanCategory,
+        );
+      } catch (rewardError) {
+        // Reward failure must not roll back a successful referral application.
+        // Log for retry / manual resolution.
+        console.error(
+          "Failed to create signup reward after referral apply:",
+          rewardError,
         );
       }
     }
 
-    // 7. Set the referrer for the referee user
-    await prisma.user.update({
-      where: { id: userId },
-      data: { referredByUserId: referrerUser.id },
-    });
-
-    // 8. Trigger signup rewards if configured
-    if (activeProgram.rewardOnSignup) {
-      await maybeCreateSignupReward(
-        referrerUser.id,
-        refereeUser.id,
-        cleanCategory,
-      );
-    }
-
     return ok(res, null, "Referral code applied successfully");
   } catch (error) {
+    // Unique constraint violation on referredByUserId means a concurrent
+    // request already applied a code — treat it as "already applied".
+    if (error?.code === "P2002") {
+      return errorResponse(res, "Referral code has already been applied", 200);
+    }
+
     console.error("Error in applyReferralCode:", error);
     return internalError(res, "Failed to apply referral code");
   }
 };
-
 export const createReferralProgram = async (req, res) => {
   try {
     const {
@@ -1074,6 +1073,7 @@ export const getReferralProgramTracks = async (req, res) => {
               email: true,
               mobileNumber: true,
             },
+           
           },
         },
         orderBy: { createdAt: "desc" },
