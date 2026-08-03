@@ -13,6 +13,10 @@ import {
   generateReferralCode,
 } from "./referral.service.js";
 
+// Categories that are treated as interchangeable for referral programs.
+// A welcome_india purchase can use a membership referral program and vice-versa.
+const MEMBERSHIP_GROUP = new Set(["membership", "welcome_india", "welcome india"]);
+
 export const getUserReferralSummary = async (req, res) => {
   const userId = req.user?.userId;
   if (!userId) {
@@ -49,26 +53,35 @@ export const getUserReferralSummary = async (req, res) => {
       return notFound(res, "User not found");
     }
 
-    // Normalize membership and welcome india to share the same category/prefix
-    const isMembershipOrWelcome =
-      cleanCategory === "membership" ||
-      cleanCategory === "welcome india" ||
-      cleanCategory === "welcome_india";
-
-    // const targetCategory = isMembershipOrWelcome ? "membership" : cleanCategory;
+    const programInclude = {
+      referrerTriggerPackages: true,
+      referrerAllowedPackages: true,
+      refereeAllowedPackages: true,
+    };
 
     // Query active referral program for this category
-    const activeProgram = await prisma.referralProgram.findFirst({
+    let activeProgram = await prisma.referralProgram.findFirst({
       where: {
         programStatus: "active",
         packageCategory: cleanCategory,
       },
-      include: {
-        referrerTriggerPackages: true,
-        referrerAllowedPackages: true,
-        refereeAllowedPackages: true,
-      },
+      include: programInclude,
     });
+
+    // If no program found and the category is in the membership group,
+    // fall back to any other category in the group (e.g. welcome_india → membership).
+    if (!activeProgram && MEMBERSHIP_GROUP.has(cleanCategory)) {
+      const fallbackCategories = Array.from(MEMBERSHIP_GROUP).filter(
+        (c) => c !== cleanCategory,
+      );
+      activeProgram = await prisma.referralProgram.findFirst({
+        where: {
+          programStatus: "active",
+          packageCategory: { in: fallbackCategories },
+        },
+        include: programInclude,
+      });
+    }
 
     if (!activeProgram) {
       return errorResponse(
@@ -77,6 +90,10 @@ export const getUserReferralSummary = async (req, res) => {
         200,
       );
     }
+
+    // Use the program's actual category for track creation so cross-category
+    // codes remain consistent (e.g. welcome_india users share the membership track).
+    const trackCategory = activeProgram.packageCategory;
 
     // Find or create the category track for this user & active program
     let track = await prisma.userReferralCategoryTrack.findUnique({
@@ -89,12 +106,12 @@ export const getUserReferralSummary = async (req, res) => {
     });
 
     if (!track) {
-      const categoryCode = await generateReferralCode(cleanCategory);
+      const categoryCode = await generateReferralCode(trackCategory);
       track = await prisma.userReferralCategoryTrack.create({
         data: {
           userId: userId,
           referralProgramId: activeProgram.id,
-          category: cleanCategory,
+          category: trackCategory,
           referralCode: categoryCode,
           maxRedemptions: activeProgram.maxRedemptionsPerUser,
           redemptions: 0,
@@ -268,11 +285,18 @@ export const applyReferralCode = async (req, res) => {
       );
     }
 
-    // 4. Fetch the referrer's category track record using the referral code
+    // 4. Fetch the referrer's category track record using the referral code.
+    // When the category is in the membership group (e.g. welcome_india), also
+    // accept codes that were generated under any other category in the same group
+    // (e.g. membership), so a single referral code works across both.
+    const trackCategoryOptions = MEMBERSHIP_GROUP.has(cleanCategory)
+      ? Array.from(MEMBERSHIP_GROUP)
+      : [cleanCategory];
+
     const referrerTrack = await prisma.userReferralCategoryTrack.findFirst({
       where: {
         referralCode: referralCode,
-        category: cleanCategory,
+        category: { in: trackCategoryOptions },
       },
       include: {
         user: {
@@ -304,7 +328,7 @@ export const applyReferralCode = async (req, res) => {
       );
     }
 
-    // 7. Find active referral program for this category (falls back to "all")
+    // 7. Find active referral program for this category (falls back to membership group, then "all")
     const now = new Date();
     const baseProgramWhere = {
       programStatus: "active",
@@ -322,6 +346,20 @@ export const applyReferralCode = async (req, res) => {
         ...baseProgramWhere,
       },
     });
+
+    // Fallback: if category is in the membership group and no exact program found,
+    // check the other categories in the group before falling back to "all".
+    if (!activeProgram && MEMBERSHIP_GROUP.has(cleanCategory)) {
+      const fallbackCategories = Array.from(MEMBERSHIP_GROUP).filter(
+        (c) => c !== cleanCategory,
+      );
+      activeProgram = await prisma.referralProgram.findFirst({
+        where: {
+          packageCategory: { in: fallbackCategories },
+          ...baseProgramWhere,
+        },
+      });
+    }
 
     if (!activeProgram) {
       activeProgram = await prisma.referralProgram.findFirst({
