@@ -384,7 +384,6 @@ export const importData = async (req, res) => {
 
       // Upsert packages in DB
       const results = [];
-      const sequenceByCategory = {};
       await prisma.$transaction(async (tx) => {
         for (const item of packagesToUpsert) {
           // Resolve / create service associations inside the transaction
@@ -461,19 +460,6 @@ export const importData = async (req, res) => {
               },
             });
           } else {
-            const categoryKey = item.category || "__default__";
-            if (sequenceByCategory[categoryKey] === undefined) {
-              const maxSequencePkg = await tx.package.findFirst({
-                where: item.category ? { category: item.category } : {},
-                orderBy: { sequence: "desc" },
-                select: { sequence: true },
-              });
-              sequenceByCategory[categoryKey] = maxSequencePkg
-                ? maxSequencePkg.sequence
-                : 0;
-            }
-            sequenceByCategory[categoryKey] += 1;
-
             pkg = await tx.package.create({
               data: {
                 id: generateId.package(),
@@ -490,7 +476,6 @@ export const importData = async (req, res) => {
                 validity: item.validity,
                 thumbnailUrlKey: item.thumbnailUrlKey,
                 isActive: item.isActive,
-                sequence: sequenceByCategory[categoryKey],
                 packageServices: {
                   create: resolvedServices.map((rs) => ({
                     id: generateId.packageService(),

@@ -16,11 +16,7 @@ export const calculateDiscount = async (packageId, couponCode) => {
     throw new Error("Invalid coupon code");
   }
 
-  if (!coupon.isActive) {
-    throw new Error("Coupon is not active");
-  }
-
-  if (coupon.validUntil && new Date(coupon.validUntil) < new Date()) {
+  if (new Date(coupon.validUntil) < new Date()) {
     throw new Error("Coupon has expired");
   }
 
@@ -46,10 +42,9 @@ export const calculateDiscount = async (packageId, couponCode) => {
   const discountAmount =
     coupon.discountType === "percentage"
       ? (packageData.discountedPrice * coupon.discountValue) / 100
-      : Math.min(coupon.discountValue, packageData.discountedPrice);
+      : coupon.discountValue;
 
   return {
-    couponId: coupon.id,
     discountType: coupon.discountType,
     discountValue: coupon.discountValue,
     discountAmount,

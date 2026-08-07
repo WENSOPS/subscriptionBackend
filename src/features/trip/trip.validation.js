@@ -8,12 +8,7 @@ const validate = (req, res, next) => {
   next();
 };
 
-const TRIP_TYPES = [
-  "airport-transfer",
-  "8Hour/80Km",
-  "8Hr/80Km",
-  "Full day",
-];
+const TRIP_TYPES = ["airport-transfer", "8Hr/80Km", "Full day"];
 
 export const createTripValidation = [
   body("assignmentId").isString().withMessage("Assignment ID must be a string"),
@@ -30,7 +25,7 @@ export const createTripValidation = [
   body("tripType")
     .isIn(TRIP_TYPES)
     .withMessage(
-      "Trip type must be one of: airport-transfer, 8Hour/80Km, 8Hr/80Km, Full day",
+      "Trip type must be one of: airport-transfer, 8Hr/80Km, Full day",
     ),
   body("services").isArray().withMessage("Services must be an array"),
   body("services.*.id")
@@ -54,11 +49,6 @@ export const createTripValidation = [
 ];
 
 export const requestTripValidation = [
-  body("subscriptionId")
-    .isString()
-    .trim()
-    .notEmpty()
-    .withMessage("Subscription ID must be a non-empty string"),
   body("pickupLocation")
     .isString()
     .withMessage("Pickup location must be a string"),
@@ -67,7 +57,7 @@ export const requestTripValidation = [
   body("tripType")
     .isIn(TRIP_TYPES)
     .withMessage(
-      "Trip type must be one of: airport-transfer, 8Hour/80Km, 8Hr/80Km, Full day",
+      "Trip type must be one of: airport-transfer, 8Hr/80Km, Full day",
     ),
   body("services").isArray().withMessage("Services must be an array"),
   body("services.*.id")
@@ -118,7 +108,7 @@ export const updateTripValidation = [
     .optional()
     .isIn(TRIP_TYPES)
     .withMessage(
-      "Trip type must be one of: airport-transfer, 8Hour/80Km, 8Hr/80Km, Full day",
+      "Trip type must be one of: airport-transfer, 8Hr/80Km, Full day",
     ),
   body("services")
     .optional()

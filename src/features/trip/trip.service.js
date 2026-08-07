@@ -108,7 +108,7 @@ export const checkSubscriptionAvailabilityForTrip = async (
       );
 
       if (!matchedService) {
-        return true;
+        return false;
       }
       return (matchedService.count ?? 0) <= 0;
     });

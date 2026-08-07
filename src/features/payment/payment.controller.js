@@ -1,5 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
-import { createCashfreeOrder, calculateGST, ensureSubscriptionCreated, processReferralOnPayment, markOrderAsPaid } from "./payment.service.js";
+import { createCashfreeOrder, calculateGST, ensureSubscriptionCreated, processReferralOnPayment } from "./payment.service.js";
 import { generateId } from "../../utils/generateId.js";
 import {
   accepted,
@@ -10,6 +10,10 @@ import {
   forbidden,
 } from "../../utils/response.js";
 import { calculateDiscount } from "../../services/discount.service.js";
+import {
+  categoriesCompatibleForReferral,
+  normalizeCategory,
+} from "../referral/referral.service.js";
 import cashfree from "../../config/cashfree.js";
 import { createSubscription } from "../subscription/subscription.service.js";
 import {
@@ -41,13 +45,8 @@ export const createOrder = async (req, res) => {
       return notFound(res, "Package not found");
     }
 
-    if (!packageData.isActive) {
-      return badRequest(res, "This package is not available for purchase");
-    }
-
     // ── Validate coupon & calculate discount ──────────────────────
     let discountAmount = 0;
-    let couponId = null;
 
     if (couponCode) {
       // FIX: was missing `await`, so .discountAmount was called on a Promise
@@ -59,7 +58,6 @@ export const createOrder = async (req, res) => {
       });
 
       discountAmount = couponResult.discountAmount ?? 0;
-      couponId = couponResult.couponId ?? null;
     }
 
     // ── Validate referral reward ──────────────────────────────────
@@ -89,7 +87,20 @@ export const createOrder = async (req, res) => {
         eligiblePackages = [];
       }
       if (eligiblePackages.length > 0 && !eligiblePackages.includes(packageId)) {
-        return badRequest(res, "This referral reward is not eligible for the selected package");
+        const scopedPkgs = await prisma.package.findMany({
+          where: { id: { in: eligiblePackages } },
+          select: { category: true },
+        });
+        const packageCategory = normalizeCategory(packageData.category);
+        const hasCompatibleScope = scopedPkgs.some((pkg) =>
+          categoriesCompatibleForReferral(pkg.category, packageCategory),
+        );
+        if (!hasCompatibleScope) {
+          return badRequest(
+            res,
+            "This referral reward is not eligible for the selected package",
+          );
+        }
       }
 
       // Check program category mapping — find which program this reward originated from
@@ -124,21 +135,14 @@ export const createOrder = async (req, res) => {
       }
 
       if (matchedProgram && matchedProgram.packageCategory) {
-        const rewardCategory = matchedProgram.packageCategory.toLowerCase();
-        const packageCategory = (packageData.category || "").toLowerCase();
+        const rewardCategory = normalizeCategory(matchedProgram.packageCategory);
+        const packageCategory = normalizeCategory(packageData.category);
+        const isAnyCategory = rewardCategory === "all";
 
-        // "all" / "ALL" category rewards work on every package
-        const isAnyCategory = rewardCategory === "all" || rewardCategory === "ALL";
-
-        // membership ↔ welcome_india rewards are cross-compatible
-        const MEMBERSHIP_GROUP = new Set(["membership", "welcome_india"]);
-        const isCrossCompatible =
-          MEMBERSHIP_GROUP.has(rewardCategory) && MEMBERSHIP_GROUP.has(packageCategory);
-
-        // Exact same category match
-        const isSameCategory = rewardCategory === packageCategory;
-
-        if (!isAnyCategory && !isSameCategory && !isCrossCompatible) {
+        if (
+          !isAnyCategory &&
+          !categoriesCompatibleForReferral(rewardCategory, packageCategory)
+        ) {
           return badRequest(
             res,
             `This referral reward belongs to the "${matchedProgram.packageCategory}" program and cannot be used for "${packageData.category || ""}" packages`
@@ -191,7 +195,6 @@ export const createOrder = async (req, res) => {
           discountAmount,
           finalAmount: orderAmount,
           couponCode: couponCode || null,
-          couponId: couponId || null,
           appliedReferralRewardId: referralRewardId || null,
           referralDiscountAmount: referralDiscountAmount || null,
           cashfreeOrderId: cashfreeResponse.orderId,
@@ -204,6 +207,13 @@ export const createOrder = async (req, res) => {
         },
       });
 
+      if (couponCode) {
+        await tx.coupon.update({
+          where: { code: couponCode },
+          data: { usedCount: { increment: 1 } },
+        });
+      }
+
       return created;
     });
 
@@ -211,7 +221,6 @@ export const createOrder = async (req, res) => {
       res,
       {
         orderId: order.id,
-        cashfreeOrderId: order.cashfreeOrderId,
         amount: orderAmount,
         discountAmount,
         referralDiscountAmount,
@@ -254,10 +263,6 @@ export const verifyPayment = async (req, res) => {
     return notFound(res, "Order not found");
   }
 
-  if (order.userId !== req.user.userId) {
-    return forbidden(res, "You are not authorized to verify this order");
-  }
-
   const customerName = order.user?.name;
 
   if (order.status === "PAID") {
@@ -274,44 +279,45 @@ export const verifyPayment = async (req, res) => {
     const cfStatus = cfResponse.data.order_status;
 
     if (cfStatus === "PAID") {
-      const { order: paidOrder, newlyPaid } = await markOrderAsPaid(orderId);
-      if (newlyPaid && paidOrder) {
-        order.status = "PAID";
+      await prisma.order.update({
+        where: { cashfreeOrderId: orderId },
+        data: { status: "PAID", paidAt: new Date() },
+      });
+      order.status = "PAID";
 
-        const formattedDate = new Date().toLocaleString("en-IN", {
-          timeZone: "Asia/Kolkata",
-          day: "2-digit",
-          month: "short",
-          year: "numeric",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: true,
+      const formattedDate = new Date().toLocaleString("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+
+      sendWhatsAppTemplate({
+        to: phone,
+        templateName: "payment_confirmed_client",
+        templateParams: [customerName, orderId, order.finalAmount, formattedDate],
+      });
+
+      sendWhatsAppTemplateToBroadcast(
+        "Testing Office",
+        "payment_confirmed_team",
+        [orderId, customerName, order.finalAmount, formattedDate],
+        phone,
+      );
+
+      try {
+        await ensureSubscriptionCreated({
+          userId: order.userId,
+          packageId: order.packageId,
+          paymentId: orderId,
         });
 
-        sendWhatsAppTemplate({
-          to: phone,
-          templateName: "payment_confirmed_client",
-          templateParams: [customerName, orderId, paidOrder.finalAmount, formattedDate],
-        });
-
-        sendWhatsAppTemplateToBroadcast(
-          "Testing Office",
-          "payment_confirmed_team",
-          [orderId, customerName, paidOrder.finalAmount, formattedDate],
-          phone,
-        );
-
-        try {
-          await ensureSubscriptionCreated({
-            userId: paidOrder.userId,
-            packageId: paidOrder.packageId,
-            paymentId: orderId,
-          });
-
-          await processReferralOnPayment(paidOrder);
-        } catch (subErr) {
-          console.error("[verifyPayment] Error creating subscription or processing referral:", subErr);
-        }
+        await processReferralOnPayment(order);
+      } catch (subErr) {
+        console.error("[verifyPayment] Error creating subscription or processing referral:", subErr);
       }
     }
   }
@@ -371,14 +377,13 @@ export const handleWebhook = async (req, res) => {
           return ok(res, { success: true });
         }
 
-        const { order: paidOrder, newlyPaid } = await markOrderAsPaid(cashfreeOrderId);
+        await prisma.order.update({
+          where: { cashfreeOrderId },
+          data: { status: "PAID", paidAt: new Date() },
+        });
 
-        if (!newlyPaid || !paidOrder) {
-          return ok(res, { success: true });
-        }
-
-        const customerName = paidOrder.user?.name;
-        const phone = paidOrder.user?.mobileNumber;
+        const customerName = existingOrder.user?.name;
+        const phone = existingOrder.user?.mobileNumber;
 
         const formattedDate = new Date().toLocaleString("en-IN", {
           timeZone: "Asia/Kolkata",
@@ -393,24 +398,24 @@ export const handleWebhook = async (req, res) => {
         sendWhatsAppTemplate({
           to: phone,
           templateName: "payment_confirmed_client",
-          templateParams: [customerName, cashfreeOrderId, paidOrder.finalAmount, formattedDate],
+          templateParams: [customerName, cashfreeOrderId, existingOrder.finalAmount, formattedDate],
         });
 
         sendWhatsAppTemplateToBroadcast(
           "Testing Office",
           "payment_confirmed_team",
-          [cashfreeOrderId, customerName, paidOrder.finalAmount, formattedDate],
+          [cashfreeOrderId, customerName, existingOrder.finalAmount, formattedDate],
           phone,
         );
 
         try {
           await ensureSubscriptionCreated({
-            userId: paidOrder.userId,
-            packageId: paidOrder.packageId,
+            userId: existingOrder.userId,
+            packageId: existingOrder.packageId,
             paymentId: cashfreeOrderId,
           });
 
-          await processReferralOnPayment(paidOrder);
+          await processReferralOnPayment(existingOrder);
         } catch (subErr) {
           console.error("[webhook] Error creating subscription or processing referral:", subErr);
         }
@@ -494,20 +499,6 @@ export const getAllPayments = async (req, res) => {
             contains: search,
           },
         },
-      },
-      {
-        OR: [
-          {
-            cashfreeOrderId: {
-              contains: search,
-            },
-          },
-          {
-            paymentId: {
-              contains: search,
-            },
-          },
-        ],
       },
     ],
   };

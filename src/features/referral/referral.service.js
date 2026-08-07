@@ -1,6 +1,315 @@
 import { prisma } from "../../lib/prisma.js";
 import { generateId } from "../../utils/generateId.js";
 
+const MEMBERSHIP_GROUP = new Set([
+  "membership",
+  "welcome_india",
+  "welcome india",
+]);
+
+export const normalizeCategory = (category) =>
+  (category || "").trim().toLowerCase();
+
+export const isMembershipGroupCategory = (category) =>
+  MEMBERSHIP_GROUP.has(normalizeCategory(category));
+
+/** membership ↔ welcome_india rewards are cross-usable at checkout only; all other flows are strict. */
+export const categoriesCompatibleForReferral = (categoryA, categoryB) => {
+  const a = normalizeCategory(categoryA);
+  const b = normalizeCategory(categoryB);
+  if (a === b) return true;
+  return isMembershipGroupCategory(a) && isMembershipGroupCategory(b);
+};
+
+const defaultProgramInclude = {
+  referrerTriggerPackages: true,
+  referrerAllowedPackages: true,
+  refereeAllowedPackages: true,
+};
+
+/**
+ * Resolves the active referral program for a package category.
+ * @param {object} [options]
+ * @param {boolean} [options.crossCategoryFallback=false] — when true, membership ↔ welcome_india programs are interchangeable (rewards/apply only).
+ */
+export const resolveActiveReferralProgram = async (
+  category,
+  include = defaultProgramInclude,
+  { crossCategoryFallback = false } = {},
+) => {
+  const cleanCategory = normalizeCategory(category);
+  const now = new Date();
+
+  const activePrograms = await prisma.referralProgram.findMany({
+    where: {
+      programStatus: "active",
+      OR: [{ startDate: null }, { startDate: { lte: now } }],
+      AND: [
+        {
+          OR: [{ endDate: null }, { endDate: { gte: now } }],
+        },
+      ],
+    },
+    include,
+  });
+
+  if (!cleanCategory) {
+    return (
+      activePrograms.find((p) => normalizeCategory(p.packageCategory) === "all") ||
+      activePrograms[0] ||
+      null
+    );
+  }
+
+  const matchCategory = (programCategory) =>
+    normalizeCategory(programCategory) === cleanCategory;
+
+  let activeProgram = activePrograms.find((p) =>
+    matchCategory(p.packageCategory),
+  );
+
+  if (!activeProgram && crossCategoryFallback && isMembershipGroupCategory(cleanCategory)) {
+    activeProgram = activePrograms.find((p) =>
+      isMembershipGroupCategory(p.packageCategory),
+    );
+  }
+
+  if (!activeProgram) {
+    activeProgram = activePrograms.find((p) =>
+      ["all"].includes(normalizeCategory(p.packageCategory)),
+    );
+  }
+
+  return activeProgram;
+};
+
+const getMembershipSiblingCategory = (category) => {
+  const clean = normalizeCategory(category);
+  if (clean === "membership") return "welcome_india";
+  if (clean === "welcome_india" || clean === "welcome india") return "membership";
+  return null;
+};
+
+async function createUserReferralCategoryTrack(
+  userId,
+  category,
+  activeProgram,
+  referralCode,
+) {
+  try {
+    return await prisma.userReferralCategoryTrack.create({
+      data: {
+        id: generateId.userReferralCategoryTrack(),
+        userId,
+        referralProgramId: activeProgram.id,
+        category,
+        referralCode,
+        maxRedemptions: activeProgram.maxRedemptionsPerUser,
+        redemptions: 0,
+      },
+    });
+  } catch (error) {
+    if (error?.code === "P2002") {
+      const existing = await prisma.userReferralCategoryTrack.findFirst({
+        where: { userId, category },
+      });
+      if (existing) {
+        return existing;
+      }
+    }
+    throw error;
+  }
+}
+
+/**
+ * Ensures a referral track/code exists for the user in the given category.
+ * membership ↔ welcome_india share one stored code (membership row); welcome_india resolves via sibling lookup.
+ */
+export const ensureUserReferralCategoryTrack = async (
+  userId,
+  category,
+  activeProgram,
+) => {
+  const cleanCategory = normalizeCategory(category);
+
+  let track = await prisma.userReferralCategoryTrack.findFirst({
+    where: {
+      userId,
+      category: cleanCategory,
+    },
+  });
+
+  if (track) {
+    return track;
+  }
+
+  const siblingCategory = getMembershipSiblingCategory(cleanCategory);
+
+  if (siblingCategory && isMembershipGroupCategory(cleanCategory)) {
+    const siblingTrack = await prisma.userReferralCategoryTrack.findFirst({
+      where: {
+        userId,
+        category: siblingCategory,
+      },
+    });
+
+    if (siblingTrack) {
+      return siblingTrack;
+    }
+  }
+
+  const codeCategory = isMembershipGroupCategory(cleanCategory)
+    ? "membership"
+    : cleanCategory;
+  const categoryCode = await generateReferralCode(codeCategory);
+
+  return createUserReferralCategoryTrack(
+    userId,
+    cleanCategory,
+    activeProgram,
+    categoryCode,
+  );
+};
+
+/**
+ * Validates a referral code for apply/signup using referralCode + category (+ referrer userId on the track).
+ * membership ↔ welcome_india: code stored under either category row can match the other category at apply time.
+ */
+export const findReferrerTrackForCategory = async (referralCode, category) => {
+  const cleanCategory = normalizeCategory(category);
+  const code = referralCode.trim();
+  const include = {
+    user: {
+      select: { id: true },
+    },
+  };
+
+  const categoriesToTry = [cleanCategory];
+  if (isMembershipGroupCategory(cleanCategory)) {
+    const siblingCategory = getMembershipSiblingCategory(cleanCategory);
+    if (siblingCategory) {
+      categoriesToTry.push(siblingCategory);
+    }
+  }
+
+  for (const cat of categoriesToTry) {
+    const track = await prisma.userReferralCategoryTrack.findFirst({
+      where: {
+        referralCode: code,
+        category: cat,
+      },
+      include,
+    });
+    if (track?.user) {
+      return track;
+    }
+  }
+
+  return null;
+};
+
+function parseEligiblePackageIds(reward) {
+  try {
+    return Array.isArray(reward.eligiblePackageIds)
+      ? reward.eligiblePackageIds
+      : JSON.parse(reward.eligiblePackageIds || "[]");
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Filters rewards for a category summary (strict — no cross-category mixing).
+ */
+async function resolveRewardOriginCategories(rewardIds, userId) {
+  const map = {};
+  if (!rewardIds.length) return map;
+
+  const tracks = await prisma.trackReferral.findMany({
+    where: {
+      OR: [{ referrerUserId: userId }, { refereeUserId: userId }],
+    },
+    select: {
+      referrerReferralRewardId: true,
+      refereeRewardSnapshot: true,
+      referralProgram: { select: { packageCategory: true } },
+    },
+  });
+
+  const programCategory = (track) =>
+    normalizeCategory(track.referralProgram?.packageCategory);
+
+  for (const track of tracks) {
+    const category = programCategory(track);
+    if (!category) continue;
+
+    if (
+      track.referrerReferralRewardId &&
+      rewardIds.includes(track.referrerReferralRewardId)
+    ) {
+      map[track.referrerReferralRewardId] = category;
+    }
+
+    if (track.refereeRewardSnapshot) {
+      let snapshot = track.refereeRewardSnapshot;
+      try {
+        snapshot =
+          typeof snapshot === "string" ? JSON.parse(snapshot) : snapshot;
+      } catch {
+        snapshot = null;
+      }
+      if (snapshot?.id && rewardIds.includes(snapshot.id)) {
+        map[snapshot.id] = category;
+      }
+    }
+  }
+
+  return map;
+}
+
+export const filterRewardsForCategory = async (rewards, category, userId) => {
+  const cleanCategory = normalizeCategory(category);
+  if (!rewards?.length) return [];
+
+  const rewardIds = rewards.map((r) => r.id);
+  const originCategoryByRewardId = userId
+    ? await resolveRewardOriginCategories(rewardIds, userId)
+    : {};
+
+  const allPkgIds = new Set();
+  for (const reward of rewards) {
+    parseEligiblePackageIds(reward).forEach((id) => {
+      if (id) allPkgIds.add(id);
+    });
+  }
+
+  const packageCategoryById = {};
+  if (allPkgIds.size > 0) {
+    const pkgs = await prisma.package.findMany({
+      where: { id: { in: [...allPkgIds] } },
+      select: { id: true, category: true },
+    });
+    pkgs.forEach((p) => {
+      packageCategoryById[p.id] = normalizeCategory(p.category);
+    });
+  }
+
+  return rewards.filter((reward) => {
+    const ids = parseEligiblePackageIds(reward);
+
+    if (ids.length === 0) {
+      const origin = originCategoryByRewardId[reward.id];
+      return origin === cleanCategory;
+    }
+
+    return ids.some((pkgId) => {
+      const pkgCategory = packageCategoryById[pkgId];
+      if (!pkgCategory) return false;
+      return pkgCategory === cleanCategory;
+    });
+  });
+};
+
 const generateRandomString = (length = 8) => {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let result = "";
@@ -13,9 +322,18 @@ const generateRandomString = (length = 8) => {
 export const generateReferralCode = async (category = "general") => {
   const cleanCategory = category.trim().toLowerCase();
 
-  let categoryPrefix = cleanCategory.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
-  if (cleanCategory === "membership" || cleanCategory === "welcome india" || cleanCategory === "welcome_india") {
+  let categoryPrefix = cleanCategory
+    .replace(/[^a-zA-Z0-9]/g, "")
+    .slice(0, 4)
+    .toUpperCase();
+
+  if (cleanCategory === "membership") {
     categoryPrefix = "MEMB";
+  } else if (
+    cleanCategory === "welcome india" ||
+    cleanCategory === "welcome_india"
+  ) {
+    categoryPrefix = "WELI";
   }
 
   let attempts = 0;
@@ -49,54 +367,11 @@ export const findActiveProgramForPackage = async (packageId, customCategory = nu
     }
   }
 
-  const now = new Date();
-  const where = {
-    programStatus: "active",
-    OR: [
-      { startDate: null },
-      { startDate: { lte: now } }
-    ],
-    AND: [
-      {
-        OR: [
-          { endDate: null },
-          { endDate: { gte: now } }
-        ]
-      }
-    ]
-  };
-
-  const includeRelations = {
-    referrerAllowedPackages: true,
-    refereeAllowedPackages: true,
-    referrerTriggerPackages: true,
-  };
-
-  if (category) {
-    let activeProgram = await prisma.referralProgram.findFirst({
-      where: { ...where, packageCategory: category },
-      include: includeRelations,
-    });
-
-    if (!activeProgram) {
-      activeProgram = await prisma.referralProgram.findFirst({
-        where: {
-          ...where,
-          packageCategory: { in: ["all", "ALL"] },
-        },
-        include: includeRelations,
-      });
-    }
-
-    return activeProgram;
+  if (!category) {
+    return resolveActiveReferralProgram(null, defaultProgramInclude);
   }
 
-  const activeProgram = await prisma.referralProgram.findFirst({
-    where,
-    include: includeRelations,
-  });
-
-  return activeProgram;
+  return resolveActiveReferralProgram(category, defaultProgramInclude);
 };
 
 export const checkReferralAlreadyRewarded = async (refereeUserId, referralProgramId) => {

@@ -88,17 +88,13 @@ export const updateUser = async (req, res) => {
     if (await userService.isMobileTaken(targetMobile, id))
       return badRequest(res, "Mobile number is already in use by another user");
 
-    if (role !== undefined && role !== existingUser.role && req.user.role !== "admin") {
-      return forbidden(res, "Only admins can change user roles");
-    }
-
     const user = await userService.updateUserRecord(
       id,
       {
         name,
         email,
         mobileNumber,
-        role: req.user.role === "admin" ? role : undefined,
+        role,
         city,
       },
       existingUser,

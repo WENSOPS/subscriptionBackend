@@ -20,6 +20,7 @@ import { stringify } from "node:querystring";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import S3Client from "../../config/storage/s3.js";
+import { sendWhatsAppTemplate } from "../../utils/whatsapp-notification.js";
 export const getMySubscription = async (req, res) => {
   const userId = req.user?.userId;
   try {
@@ -136,7 +137,7 @@ export const getSubscriptionById = async (req, res) => {
     }
     const thumbnailUrl = subscription.package?.thumbnailUrlKey
       ? await getSignedUrl(
-          S3Client,
+          s3Client,
           new GetObjectCommand({
             Bucket: process.env.S3_BUCKET,
             Key: subscription.package?.thumbnailUrlKey,
@@ -249,6 +250,19 @@ export const verifySubscription = async (req, res) => {
   try {
     const subscription = await prisma.subscription.findUnique({
       where: { id },
+      include: {
+        user: {
+          select: {
+            name: true,
+            mobileNumber: true,
+          },
+        },
+        package: {
+          select: {
+            name: true,
+          },
+        },
+      },
     });
     if (!subscription) {
       return notFound(res, "Subscription not found");
@@ -266,6 +280,52 @@ export const verifySubscription = async (req, res) => {
         adminRemarks: adminRemarks || null,
       },
     });
+
+    const customerName = subscription.user?.name || "Customer";
+    const packageName = subscription.package?.name || "your package";
+    const phone = subscription.user?.mobileNumber;
+
+    let orderId = subscription.paymentId || subscription.id;
+    let finalAmount = "";
+
+    if (subscription.paymentId) {
+      const order = await prisma.order.findFirst({
+        where: { cashfreeOrderId: subscription.paymentId },
+        select: {
+          cashfreeOrderId: true,
+          finalAmount: true,
+        },
+      });
+      if (order) {
+        orderId = order.cashfreeOrderId || orderId;
+        finalAmount = order.finalAmount;
+      }
+    }
+
+    const formattedDate = new Date().toLocaleString("en-IN", {
+      timeZone: "Asia/Kolkata",
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+
+    if (phone) {
+      sendWhatsAppTemplate({
+        to: phone,
+        templateName: "subscription_confirmed_client",
+        templateParams: [
+          customerName,
+          packageName,
+          orderId,
+          finalAmount,
+          formattedDate,
+        ],
+      });
+    }
+
     ok(res, { message: "Subscription verified successfully" });
   } catch (error) {
     console.error("Error verifying subscription:", error);

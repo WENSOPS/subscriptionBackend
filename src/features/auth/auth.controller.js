@@ -122,16 +122,6 @@ export const verifyOtp = async (req, res) => {
   try {
     const { mobileNumber, otp } = req.body;
 
-    // 1. Check if user is blocked
-    const isBlocked = await getKey(OTP_BLOCKED_KEY(mobileNumber));
-    if (isBlocked) {
-      return forbidden(
-        res,
-        `Too many failed attempts. Please try again after ${BLOCK_DURATION / 60} minutes.`,
-      );
-    }
-
-    // 2. Validate OTP from Redis
     const hashedOtp = await getKey(OTP_KEY(mobileNumber));
     if (!hashedOtp) {
       return errorResponse(res, "Invalid or expired OTP", 400);
@@ -139,24 +129,10 @@ export const verifyOtp = async (req, res) => {
 
     const isMatch = await bcrypt.compare(otp, hashedOtp);
     if (!isMatch) {
-      const attempts = await incrementKey(OTP_ATTEMPTS_KEY(mobileNumber));
-      if (attempts === 1) {
-        await setExpiry(OTP_ATTEMPTS_KEY(mobileNumber), OTP_EXPIRY);
-      }
-      if (attempts >= MAX_ATTEMPTS) {
-        await setKey(OTP_BLOCKED_KEY(mobileNumber), "1", BLOCK_DURATION);
-        await deleteKey(OTP_ATTEMPTS_KEY(mobileNumber));
-        await deleteKey(OTP_KEY(mobileNumber));
-        return forbidden(
-          res,
-          `Too many failed attempts. Please try again after ${BLOCK_DURATION / 60} minutes.`,
-        );
-      }
       return errorResponse(res, "Invalid or expired OTP", 400);
     }
 
-    await deleteKey(OTP_ATTEMPTS_KEY(mobileNumber));
-    await deleteKey(OTP_KEY(mobileNumber));
+    await deleteKey(`otp:${mobileNumber}`);
 
     // 4. Upsert user — atomic, single DB hit
     const user = await prisma.user.upsert({

@@ -159,7 +159,7 @@ export const webhookUpdate = async (req, res) => {
         },
       }),
     ]);
-    if (booking.count !== 0 && orderStatus === "SUCCESS" && bookingData) {
+    if (booking.count !== 0 && orderStatus === "SUCCESS") {
       const { invoiceNumber, s3Key } = await processInvoice({
         id: bookingData.id,
         customer: {

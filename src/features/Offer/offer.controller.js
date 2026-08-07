@@ -55,8 +55,6 @@ export const createOffer = async (req, res) => {
       return badRequest(res, "Start date must be before end date");
     }
 
-    const parsedIsActive = isActive !== undefined ? isActive : true;
-
     if (featuredPackageIds && Array.isArray(featuredPackageIds)) {
       for (const pId of featuredPackageIds) {
         const packageExists = await prisma.package.findUnique({
@@ -90,7 +88,7 @@ export const createOffer = async (req, res) => {
       data: {
         id: generateId.offer(),
         slug,
-        isActive: parsedIsActive,
+        isActive: true,
         startDate: startDate ? new Date(startDate) : null,
         endDate: new Date(endDate),
         category,

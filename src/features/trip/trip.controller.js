@@ -172,10 +172,7 @@ export const createTrip = async (req, res) => {
       return unprocessable(res, "packageName is required");
     }
 
-    const combinedServices = [
-      ...(Array.isArray(services) ? services : []),
-      ...(Array.isArray(additionalServices) ? additionalServices : []),
-    ];
+    const combinedServices = Array.isArray(services) ? services : [];
 
     const availability = await checkSubscriptionAvailabilityForTrip(
       subscriptionId,
@@ -467,13 +464,6 @@ export const cancelTrip = async (req, res) => {
     const existing = await prisma.trip.findUnique({ where: { id } });
     if (!existing) {
       return notFound(res, "Trip not found");
-    }
-
-    if (
-      req.user.role === "user" &&
-      existing.userId !== req.user.userId
-    ) {
-      return forbidden(res, "You are not authorized to cancel this trip");
     }
 
     const trip = await prisma.trip.update({

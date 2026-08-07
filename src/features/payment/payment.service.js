@@ -1,7 +1,7 @@
 import cashfree from "../../config/cashfree.js";
 import { prisma } from "../../lib/prisma.js";
 import { createSubscription } from "../subscription/subscription.service.js";
-import { findActiveProgramForPackage } from "../referral/referral.service.js";
+import { findActiveProgramForPackage, checkReferralAlreadyRewarded } from "../referral/referral.service.js";
 import { generateId } from "../../utils/generateId.js";
 
 export const createCashfreeOrder = async (
@@ -81,51 +81,6 @@ export const ensureSubscriptionCreated = async ({
   return { subscription, created: true };
 };
 
-/**
- * Atomically marks a PENDING order as PAID and increments coupon usage.
- * Returns { order, newlyPaid } — newlyPaid is false if already PAID or not found.
- */
-export const markOrderAsPaid = async (cashfreeOrderId) => {
-  return prisma.$transaction(async (tx) => {
-    const updated = await tx.order.updateMany({
-      where: { cashfreeOrderId, status: "PENDING" },
-      data: { status: "PAID", paidAt: new Date() },
-    });
-
-    const order = await tx.order.findUnique({
-      where: { cashfreeOrderId },
-      select: {
-        id: true,
-        status: true,
-        userId: true,
-        packageId: true,
-        finalAmount: true,
-        couponId: true,
-        appliedReferralRewardId: true,
-        referralDiscountAmount: true,
-        user: { select: { name: true, mobileNumber: true } },
-      },
-    });
-
-    if (!order) {
-      return { order: null, newlyPaid: false };
-    }
-
-    if (updated.count === 0) {
-      return { order, newlyPaid: false };
-    }
-
-    if (order.couponId) {
-      await tx.coupon.update({
-        where: { id: order.couponId },
-        data: { usedCount: { increment: 1 } },
-      });
-    }
-
-    return { order, newlyPaid: true };
-  });
-};
-
 export const processReferralOnPayment = async (order) => {
   // 1. Redeems the applied referral reward if one was used
   if (order.appliedReferralRewardId) {
@@ -156,39 +111,37 @@ export const processReferralOnPayment = async (order) => {
       );
 
       if (isTriggerPackage) {
-        await prisma.$transaction(async (tx) => {
-          const alreadyRewarded = await tx.trackReferral.findFirst({
+        const alreadyRewarded = await checkReferralAlreadyRewarded(
+          order.userId,
+          activeProgram.id,
+        );
+        if (alreadyRewarded) {
+          return;
+        }
+
+        const program = await prisma.referralProgram.findUnique({
+          where: { id: activeProgram.id },
+        });
+        if (
+          program.maxTotalRedemptions !== null &&
+          program.totalRedemptionCount >= program.maxTotalRedemptions
+        ) {
+          return;
+        }
+
+        if (program.maxRedemptionsPerUser !== null) {
+          const referrerUsageCount = await prisma.trackReferral.count({
             where: {
-              refereeUserId: order.userId,
+              referrerUserId: buyer.referredByUserId,
               referralProgramId: activeProgram.id,
             },
           });
-          if (alreadyRewarded) {
+          if (referrerUsageCount >= program.maxRedemptionsPerUser) {
             return;
           }
+        }
 
-          const program = await tx.referralProgram.findUnique({
-            where: { id: activeProgram.id },
-          });
-          if (
-            program.maxTotalRedemptions !== null &&
-            program.totalRedemptionCount >= program.maxTotalRedemptions
-          ) {
-            return;
-          }
-
-          if (program.maxRedemptionsPerUser !== null) {
-            const referrerUsageCount = await tx.trackReferral.count({
-              where: {
-                referrerUserId: buyer.referredByUserId,
-                referralProgramId: activeProgram.id,
-              },
-            });
-            if (referrerUsageCount >= program.maxRedemptionsPerUser) {
-              return;
-            }
-          }
-
+        await prisma.$transaction(async (tx) => {
           let referrerReward = null;
           if (
             activeProgram.referrerRewardType &&
