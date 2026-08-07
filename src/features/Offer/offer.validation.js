@@ -89,8 +89,10 @@ export const createOfferValidationRules = () => {
       .isArray()
       .withMessage("Featured package IDs must be an array"),
     body("featuredPackageIds.*")
-      .isInt({ gt: 0 })
-      .withMessage("Featured package ID must be a positive integer"),
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Featured package ID must be a non-empty string"),
     body("ctaSecondaryText")
       .optional({ nullable: true })
       .isString()
@@ -129,8 +131,10 @@ export const createOfferValidationRules = () => {
 export const updateOfferValidationRules = () => {
   return [
     param("id")
-      .isInt({ gt: 0 })
-      .withMessage("Offer ID must be a positive integer"),
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Offer ID must be a non-empty string"),
     body("slug").optional().isString().withMessage("Slug must be a string"),
     body("endDate")
       .optional()
@@ -200,8 +204,10 @@ export const updateOfferValidationRules = () => {
       .isArray()
       .withMessage("Featured package IDs must be an array"),
     body("featuredPackageIds.*")
-      .isInt({ gt: 0 })
-      .withMessage("Featured package ID must be a positive integer"),
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Featured package ID must be a non-empty string"),
     body("ctaSecondaryText")
       .optional({ nullable: true })
       .isString()
@@ -239,7 +245,11 @@ export const updateOfferValidationRules = () => {
 
 export const idValidationRules = () => {
   return [
-    param("id").isInt({ gt: 0 }).withMessage("ID must be a positive integer"),
+    param("id")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("ID must be a non-empty string"),
     validate,
   ];
 };

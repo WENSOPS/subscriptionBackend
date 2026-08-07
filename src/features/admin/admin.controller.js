@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { prisma } from "../../lib/prisma.js";
+import { generateId } from "../../utils/generateId.js";
 import {
   ok,
   badRequest,
@@ -383,6 +384,7 @@ export const importData = async (req, res) => {
 
       // Upsert packages in DB
       const results = [];
+      const sequenceByCategory = {};
       await prisma.$transaction(async (tx) => {
         for (const item of packagesToUpsert) {
           // Resolve / create service associations inside the transaction
@@ -394,6 +396,7 @@ export const importData = async (req, res) => {
             if (!dbService) {
               dbService = await tx.service.create({
                 data: {
+                  id: generateId.service(),
                   title: s.title,
                   description: `Auto-created during package import for package "${item.name}"`,
                   price: 100,
@@ -409,11 +412,13 @@ export const importData = async (req, res) => {
 
           const mediaRecords = [
             ...item.images.map((key, index) => ({
+              id: generateId.packageMedia(),
               urlKey: key,
               type: "IMAGE",
               order: index,
             })),
             ...item.videos.map((key, index) => ({
+              id: generateId.packageMedia(),
               urlKey: key,
               type: "VIDEO",
               order: index,
@@ -444,6 +449,7 @@ export const importData = async (req, res) => {
                 packageServices: {
                   deleteMany: {},
                   create: resolvedServices.map((rs) => ({
+                    id: generateId.packageService(),
                     serviceId: rs.serviceId,
                     count: rs.count,
                   })),
@@ -455,8 +461,22 @@ export const importData = async (req, res) => {
               },
             });
           } else {
+            const categoryKey = item.category || "__default__";
+            if (sequenceByCategory[categoryKey] === undefined) {
+              const maxSequencePkg = await tx.package.findFirst({
+                where: item.category ? { category: item.category } : {},
+                orderBy: { sequence: "desc" },
+                select: { sequence: true },
+              });
+              sequenceByCategory[categoryKey] = maxSequencePkg
+                ? maxSequencePkg.sequence
+                : 0;
+            }
+            sequenceByCategory[categoryKey] += 1;
+
             pkg = await tx.package.create({
               data: {
+                id: generateId.package(),
                 name: item.name,
                 description: item.description,
                 regularPrice: item.regularPrice,
@@ -470,8 +490,10 @@ export const importData = async (req, res) => {
                 validity: item.validity,
                 thumbnailUrlKey: item.thumbnailUrlKey,
                 isActive: item.isActive,
+                sequence: sequenceByCategory[categoryKey],
                 packageServices: {
                   create: resolvedServices.map((rs) => ({
+                    id: generateId.packageService(),
                     serviceId: rs.serviceId,
                     count: rs.count,
                   })),

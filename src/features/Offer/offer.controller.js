@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { generateId } from "../../utils/generateId.js";
 import {
   ok,
   created,
@@ -59,7 +60,7 @@ export const createOffer = async (req, res) => {
     if (featuredPackageIds && Array.isArray(featuredPackageIds)) {
       for (const pId of featuredPackageIds) {
         const packageExists = await prisma.package.findUnique({
-          where: { id: parseInt(pId) },
+          where: { id: pId },
         });
         if (!packageExists) {
           return notFound(res, `Featured package with ID ${pId} not found`);
@@ -87,8 +88,9 @@ export const createOffer = async (req, res) => {
 
     const newOffer = await prisma.offer.create({
       data: {
+        id: generateId.offer(),
         slug,
-        isActive: true, // Keep isActive status true in db
+        isActive: parsedIsActive,
         startDate: startDate ? new Date(startDate) : null,
         endDate: new Date(endDate),
         category,
@@ -107,7 +109,7 @@ export const createOffer = async (req, res) => {
         featuredPackages: {
           connect:
             featuredPackageIds && Array.isArray(featuredPackageIds)
-              ? featuredPackageIds.map((id) => ({ id: parseInt(id) }))
+              ? featuredPackageIds.map((pkgId) => ({ id: pkgId }))
               : [],
         },
         ctaSecondaryText,
@@ -115,6 +117,7 @@ export const createOffer = async (req, res) => {
         benefits: {
           create: benefits
             ? benefits.map((b) => ({
+                id: generateId.offerBenefit(),
                 icon: b.icon,
                 title: b.title,
                 description: b.description,
@@ -163,7 +166,7 @@ export const updateOffer = async (req, res) => {
   } = req.body;
 
   try {
-    const offerId = parseInt(id);
+    const offerId = id;
 
     const currentOffer = await prisma.offer.findUnique({
       where: { id: offerId },
@@ -210,7 +213,7 @@ export const updateOffer = async (req, res) => {
     if (featuredPackageIds && Array.isArray(featuredPackageIds)) {
       for (const pId of featuredPackageIds) {
         const packageExists = await prisma.package.findUnique({
-          where: { id: parseInt(pId) },
+          where: { id: pId },
         });
         if (!packageExists) {
           return notFound(res, `Featured package with ID ${pId} not found`);
@@ -268,7 +271,7 @@ export const updateOffer = async (req, res) => {
           featuredPackageIds !== undefined
             ? {
                 set: featuredPackageIds
-                  ? featuredPackageIds.map((id) => ({ id: parseInt(id) }))
+                  ? featuredPackageIds.map((pkgId) => ({ id: pkgId }))
                   : [],
               }
             : undefined,
@@ -278,6 +281,7 @@ export const updateOffer = async (req, res) => {
           benefits: {
             deleteMany: {},
             create: benefits.map((b) => ({
+              id: generateId.offerBenefit(),
               icon: b.icon,
               title: b.title,
               description: b.description,
@@ -303,7 +307,7 @@ export const deleteOffer = async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.offer.delete({
-      where: { id: parseInt(id) },
+      where: { id },
     });
     return noContent(res, "Offer deleted successfully");
   } catch (error) {
@@ -373,7 +377,7 @@ export const getOfferById = async (req, res) => {
   const { id } = req.params;
   try {
     const offer = await prisma.offer.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
       include: {
         benefits: {
           orderBy: {

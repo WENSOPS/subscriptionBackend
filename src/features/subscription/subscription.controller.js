@@ -110,7 +110,7 @@ export const getSubscriptionById = async (req, res) => {
   const { id } = req.params;
   try {
     const subscription = await prisma.subscription.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
       include: {
         package: {
           select: {
@@ -136,7 +136,7 @@ export const getSubscriptionById = async (req, res) => {
     }
     const thumbnailUrl = subscription.package?.thumbnailUrlKey
       ? await getSignedUrl(
-          s3Client,
+          S3Client,
           new GetObjectCommand({
             Bucket: process.env.S3_BUCKET,
             Key: subscription.package?.thumbnailUrlKey,
@@ -248,7 +248,7 @@ export const verifySubscription = async (req, res) => {
   const { adminRemarks } = req.body;
   try {
     const subscription = await prisma.subscription.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
     });
     if (!subscription) {
       return notFound(res, "Subscription not found");
@@ -258,7 +258,7 @@ export const verifySubscription = async (req, res) => {
     }
 
     await prisma.subscription.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: {
         status: "active",
         verifiedBy: req.user?.userId || "unknown",
@@ -278,13 +278,13 @@ export const cancelSubscription = async (req, res) => {
   const { adminRemarks } = req.body;
   try {
     const subscription = await prisma.subscription.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
     });
     if (!subscription) {
       return notFound(res, "Subscription not found");
     }
     await prisma.subscription.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: { status: "cancelled", adminRemarks: adminRemarks || null },
     });
     accepted(res, { message: "Subscription cancelled successfully" });

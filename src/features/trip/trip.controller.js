@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { generateId } from "../../utils/generateId.js";
 import {
   checkSubscriptionAvailabilityForTrip,
   deductSubscriptionUsageForTrip,
@@ -60,7 +61,8 @@ export const requestTrip = async (req, res) => {
 
     const trip = await prisma.trip.create({
       data: {
-        subscriptionId: parseInt(subscriptionId),
+        id: generateId.trip(),
+        subscriptionId,
         pickupLocation,
         dropLocation,
         tripDate: new Date(tripDate),
@@ -161,9 +163,23 @@ export const createTrip = async (req, res) => {
     const customerName = req.user?.name;
 
     const plan = subscriptionId;
+
+    if (
+      !packageName ||
+      typeof packageName !== "string" ||
+      packageName.trim() === ""
+    ) {
+      return unprocessable(res, "packageName is required");
+    }
+
+    const combinedServices = [
+      ...(Array.isArray(services) ? services : []),
+      ...(Array.isArray(additionalServices) ? additionalServices : []),
+    ];
+
     const availability = await checkSubscriptionAvailabilityForTrip(
       subscriptionId,
-      services,
+      combinedServices,
     );
     if (!availability.ok) {
       return unprocessable(res, availability.message, {
@@ -172,15 +188,11 @@ export const createTrip = async (req, res) => {
       });
     }
 
-    const combinedServices = [
-      ...(Array.isArray(services) ? services : []),
-      ...(Array.isArray(additionalServices) ? additionalServices : []),
-    ];
-
     const trip = await prisma.trip.create({
       data: {
+        id: generateId.trip(),
         assignmentId,
-        subscriptionId: parseInt(subscriptionId),
+        subscriptionId,
         pickupLocation,
         dropLocation,
         tripDate: new Date(tripDate),
@@ -198,14 +210,6 @@ export const createTrip = async (req, res) => {
     const tripId = trip.id ? trip.id : "";
 
     await deductSubscriptionUsageForTrip(trip); // Deduct usage immediately for admin-created trips
-    // Validation
-    if (
-      !packageName ||
-      typeof packageName !== "string" ||
-      packageName.trim() === ""
-    ) {
-      return unprocessable(res, "packageName is required");
-    }
 
     (sendWhatsAppTemplate({
       to: phone,
@@ -241,7 +245,7 @@ export const approveTrip = async (req, res) => {
       req.body;
 
     const existingTrip = await prisma.trip.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
     });
 
     if (!existingTrip) {
@@ -268,7 +272,7 @@ export const approveTrip = async (req, res) => {
     }
 
     const trip = await prisma.trip.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: { status: "confirmed", confirmedBy: req.user.userId, assignmentId },
     });
 
@@ -308,7 +312,7 @@ export const getTripById = async (req, res) => {
   try {
     const { id } = req.params;
     const trip = await prisma.trip.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
       select: {
         id: true,
         assignmentId: true,
@@ -432,10 +436,10 @@ export const updateTrip = async (req, res) => {
     ];
 
     const trip = await prisma.trip.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: {
         assignmentId,
-        subscriptionId: parseInt(subscriptionId),
+        subscriptionId,
         pickupLocation,
         dropLocation,
         tripDate: new Date(tripDate),
@@ -459,8 +463,21 @@ export const cancelTrip = async (req, res) => {
   try {
     const { id } = req.params;
     const { reason } = req.body;
+
+    const existing = await prisma.trip.findUnique({ where: { id } });
+    if (!existing) {
+      return notFound(res, "Trip not found");
+    }
+
+    if (
+      req.user.role === "user" &&
+      existing.userId !== req.user.userId
+    ) {
+      return forbidden(res, "You are not authorized to cancel this trip");
+    }
+
     const trip = await prisma.trip.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: {
         status: "cancelled",
         cancellationReason: reason,
@@ -478,7 +495,7 @@ export const markCompleted = async (req, res) => {
   try {
     const { id } = req.params;
     const trip = await prisma.trip.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
     });
     if (!trip) {
       return notFound(res, "Trip not found");
@@ -488,7 +505,7 @@ export const markCompleted = async (req, res) => {
     }
 
     const updatedTrip = await prisma.trip.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: { status: "completed" },
     });
 
@@ -503,7 +520,7 @@ export const deleteTrip = async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.trip.delete({
-      where: { id: parseInt(id) },
+      where: { id },
     });
     noContent(res, "Trip deleted successfully");
   } catch (error) {

@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { generateId } from "../../utils/generateId.js";
 
 const generateRandomString = (length = 8) => {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -153,6 +154,7 @@ export const maybeCreateSignupReward = async (referrerId, refereeId, category = 
 
       referrerReward = await tx.referralReward.create({
         data: {
+          id: generateId.referralReward(),
           userId: referrerId,
           rewardCalcType: activeProgram.referrerRewardCalcType || "fixed",
           rewardValue: activeProgram.referrerRewardValue || 0,
@@ -175,6 +177,7 @@ export const maybeCreateSignupReward = async (referrerId, refereeId, category = 
 
       refereeReward = await tx.referralReward.create({
         data: {
+          id: generateId.referralReward(),
           userId: refereeId,
           rewardCalcType: activeProgram.refereeRewardCalcType || "fixed",
           rewardValue: activeProgram.refereeRewardValue || 0,
@@ -190,6 +193,7 @@ export const maybeCreateSignupReward = async (referrerId, refereeId, category = 
 
     await tx.trackReferral.create({
       data: {
+        id: generateId.trackReferral(),
         referralProgramId: activeProgram.id,
         referralProgramNameSnapshot: activeProgram.name,
         referrerUserId: referrerId,

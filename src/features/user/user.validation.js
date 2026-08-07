@@ -26,7 +26,11 @@ export const createUserValidationRules = () => {
 
 export const updateUserValidationRules = () => {
   return [
-    param("id").isInt().withMessage("ID must be an integer"),
+    param("id")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("ID must be a non-empty string"),
     body("name").optional().notEmpty().withMessage("Name cannot be empty"),
     body("email").optional().isEmail().withMessage("Valid email is required"),
     body("mobileNumber")
@@ -40,5 +44,12 @@ export const updateUserValidationRules = () => {
 };
 
 export const paramsValidationRules = () => {
-  return [param("id").isInt().withMessage("ID must be an integer"), validate];
+  return [
+    param("id")
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("ID must be a non-empty string"),
+    validate,
+  ];
 };

@@ -18,6 +18,7 @@ import {
 } from "../../utils/response.js";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import s3Client from "../../config/storage/s3.js";
+import { generateId } from "../../utils/generateId.js";
 
 const signPackageMedia = async (pkg) => {
   if (!pkg) return null;
@@ -122,7 +123,7 @@ export const getPackageById = async (req, res) => {
   const { id } = req.params;
   try {
     const pkg = await prisma.package.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
       include: {
         packageServices: {
           select: {
@@ -149,7 +150,7 @@ export const getPackageServices = async (req, res) => {
     const { page = 1, limit = 10, search } = req.query;
     const { packageId } = req.params;
 
-    const parsedPackageId = parseInt(packageId);
+    const parsedPackageId = packageId;
 
     const packageExists = await prisma.package.findUnique({
       where: { id: parsedPackageId },
@@ -251,11 +252,13 @@ export const createPackage = async (req, res) => {
 
     const mediaRecords = [
       ...(Array.isArray(images) ? images : []).map((key, index) => ({
+        id: generateId.packageMedia(),
         urlKey: key,
         type: "IMAGE",
         order: index,
       })),
       ...(Array.isArray(videos) ? videos : []).map((key, index) => ({
+        id: generateId.packageMedia(),
         urlKey: key,
         type: "VIDEO",
         order: index,
@@ -272,6 +275,7 @@ export const createPackage = async (req, res) => {
 
     const newPackage = await prisma.package.create({
       data: {
+        id: generateId.package(),
         name,
         description,
         regularPrice,
@@ -282,7 +286,8 @@ export const createPackage = async (req, res) => {
         bodyguardType,
         trips,
         gst,
-        validity,
+        validity:
+          validity != null && validity !== "" ? Number(validity) : null,
         thumbnailUrlKey,
         category,
         sequence:
@@ -292,6 +297,7 @@ export const createPackage = async (req, res) => {
         ...(termsAndConditions !== undefined && { termsAndConditions }),
         packageServices: {
           create: services.map((service) => ({
+            id: generateId.packageService(),
             serviceId: service.id,
             count: service.count || 1,
           })),
@@ -424,11 +430,13 @@ export const updatePackage = async (req, res) => {
 
     const mediaRecords = [
       ...finalImages.map((key, index) => ({
+        id: generateId.packageMedia(),
         urlKey: key,
         type: "IMAGE",
         order: index,
       })),
       ...finalVideos.map((key, index) => ({
+        id: generateId.packageMedia(),
         urlKey: key,
         type: "VIDEO",
         order: index,
@@ -436,13 +444,16 @@ export const updatePackage = async (req, res) => {
     ];
 
     const updatedPackage = await prisma.package.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: {
         name,
         description,
         regularPrice,
         tags,
-        validity,
+        ...(validity !== undefined && {
+          validity:
+            validity != null && validity !== "" ? Number(validity) : null,
+        }),
         vehicleType,
         vehicleModel,
         bodyguardType,
@@ -461,6 +472,7 @@ export const updatePackage = async (req, res) => {
           packageServices: {
             deleteMany: {},
             create: services.map((service) => ({
+              id: generateId.packageService(),
               serviceId: service.id,
               count: service.count || 1,
             })),
@@ -495,7 +507,7 @@ export const updatePackage = async (req, res) => {
 export const deletePackage = async (req, res) => {
   const { id } = req.params;
   try {
-    await prisma.package.delete({ where: { id: parseInt(id) } });
+    await prisma.package.delete({ where: { id } });
     return noContent(res, "Package deleted successfully");
   } catch (error) {
     if (error.code === "P2025") {
@@ -567,7 +579,7 @@ export const updatePackageSequence = async (req, res) => {
     await prisma.$transaction(
       packageIds.map((id, index) =>
         prisma.package.update({
-          where: { id: parseInt(id) },
+          where: { id },
           data: { sequence: index + 1 },
         }),
       ),

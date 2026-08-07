@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { generateId } from "../../utils/generateId.js";
 
 // ─── Sanitizers ───────────────────────────────────────────────
 
@@ -53,6 +54,7 @@ export const isMobileTaken = async (mobileNumber, excludeId = null) => {
 export const createUserRecord = async ({ name, email, mobileNumber, role, city }) => {
     return await prisma.user.create({
         data: {
+            id: generateId.user(),
             name: name?.trim() || null,
             email: sanitizeEmail(email),
             mobileNumber: sanitizeMobile(mobileNumber),

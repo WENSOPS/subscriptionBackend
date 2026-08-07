@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { generateOtp } from "../../utils/generateOtp.js";
+import { generateId } from "../../utils/generateId.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import {
@@ -9,6 +10,7 @@ import {
   errorResponse,
   unauthorized,
   forbidden,
+  notFound,
 } from "../../utils/response.js";
 import {
   generateAccessAndRefreshTokens,
@@ -137,17 +139,30 @@ export const verifyOtp = async (req, res) => {
 
     const isMatch = await bcrypt.compare(otp, hashedOtp);
     if (!isMatch) {
+      const attempts = await incrementKey(OTP_ATTEMPTS_KEY(mobileNumber));
+      if (attempts === 1) {
+        await setExpiry(OTP_ATTEMPTS_KEY(mobileNumber), OTP_EXPIRY);
+      }
+      if (attempts >= MAX_ATTEMPTS) {
+        await setKey(OTP_BLOCKED_KEY(mobileNumber), "1", BLOCK_DURATION);
+        await deleteKey(OTP_ATTEMPTS_KEY(mobileNumber));
+        await deleteKey(OTP_KEY(mobileNumber));
+        return forbidden(
+          res,
+          `Too many failed attempts. Please try again after ${BLOCK_DURATION / 60} minutes.`,
+        );
+      }
       return errorResponse(res, "Invalid or expired OTP", 400);
     }
 
-    // 3. Delete OTP from Redis BEFORE DB transaction (prevent reuse)
-    await deleteKey(`otp:${mobileNumber}`);
+    await deleteKey(OTP_ATTEMPTS_KEY(mobileNumber));
+    await deleteKey(OTP_KEY(mobileNumber));
 
     // 4. Upsert user — atomic, single DB hit
     const user = await prisma.user.upsert({
       where: { mobileNumber },
       update: {},
-      create: { mobileNumber, role: "user" },
+      create: { id: generateId.user(), mobileNumber, role: "user" },
     });
 
     // 5. Detect new user — createdAt and updatedAt are identical on creation

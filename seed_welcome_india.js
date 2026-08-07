@@ -1,4 +1,5 @@
 import { prisma } from "./src/lib/prisma.js";
+import { generateId } from "./src/utils/generateId.js";
 import { plans } from "../../package_wensforce/src/app/data/welcomeIndia.js";
 
 function convertTermsToTipTapJson(terms) {
@@ -43,15 +44,9 @@ async function main() {
     await prisma.$executeRawUnsafe(`DELETE FROM \`packages\` WHERE \`id\` = ?`, pkg.id);
   }
 
-  // Find max numeric ID currently in packages table to increment from
-  const pkgs = await prisma.$queryRawUnsafe(`SELECT id FROM \`packages\``);
-  const existingIds = pkgs.map(p => parseInt(p.id)).filter(id => !isNaN(id));
-  let nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 100;
-  console.log(`Starting package ID assignment from: ${nextId}`);
-
   for (let i = 0; i < plans.length; i++) {
     const plan = plans[i];
-    const packageId = String(nextId + i);
+    const packageId = generateId.package();
     console.log(`\n--- Seeding plan: ${plan.name} (ID: ${packageId}) ---`);
 
     // Create the package row using raw SQL
@@ -111,9 +106,10 @@ async function main() {
           // Create service using raw SQL
           await prisma.$executeRawUnsafe(`
             INSERT INTO \`services\` (
-              \`title\`, \`description\`, \`thumbnailUrlKey\`, \`isActive\`, \`price\`, \`updatedAt\`, \`createdAt\`
-            ) VALUES (?, ?, ?, 1, 100, NOW(), NOW())
+              \`id\`, \`title\`, \`description\`, \`thumbnailUrlKey\`, \`isActive\`, \`price\`, \`updatedAt\`, \`createdAt\`
+            ) VALUES (?, ?, ?, ?, 1, 100, NOW(), NOW())
           `,
+            generateId.service(),
             serviceTitle,
             privilege.desc || "",
             privilege.icon || "CheckCircle"
@@ -129,9 +125,10 @@ async function main() {
         // Insert relation
         await prisma.$executeRawUnsafe(`
           INSERT INTO \`package_services\` (
-            \`packageId\`, \`serviceId\`, \`count\`, \`updatedAt\`, \`createdAt\`
-          ) VALUES (?, ?, ?, NOW(), NOW())
+            \`id\`, \`packageId\`, \`serviceId\`, \`count\`, \`updatedAt\`, \`createdAt\`
+          ) VALUES (?, ?, ?, ?, NOW(), NOW())
         `,
+          generateId.packageService(),
           packageId,
           serviceId,
           count
@@ -144,9 +141,10 @@ async function main() {
     if (plan.video) {
       await prisma.$executeRawUnsafe(`
         INSERT INTO \`package_media\` (
-          \`packageId\`, \`type\`, \`urlKey\`, \`order\`, \`createdAt\`
-        ) VALUES (?, 'VIDEO', ?, 0, NOW())
+          \`id\`, \`packageId\`, \`type\`, \`urlKey\`, \`order\`, \`createdAt\`
+        ) VALUES (?, ?, 'VIDEO', ?, 0, NOW())
       `,
+        generateId.packageMedia(),
         packageId,
         plan.video
       );

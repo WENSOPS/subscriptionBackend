@@ -9,8 +9,16 @@ const validate = (req, res, next) => {
 };
 
 export const createSubscriptionValidation = [
-  body("userId").isInt().withMessage("User ID must be an integer"),
-  body("packageId").isInt().withMessage("Package ID must be an integer"),
+  body("userId")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("User ID must be a non-empty string"),
+  body("packageId")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Package ID must be a non-empty string"),
   body("startDate")
     .isISO8601()
     .toDate()
@@ -20,12 +28,20 @@ export const createSubscriptionValidation = [
 ];
 
 export const paramsIdValidation = [
-  param("id").isInt().withMessage("ID must be an integer"),
+  param("id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("ID must be a non-empty string"),
   validate,
 ];
 
 export const verifySubscriptionValidation = [
-  param("id").isInt().withMessage("ID must be an integer"),
+  param("id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("ID must be a non-empty string"),
   body("adminRemarks")
     .optional()
     .isString()
@@ -34,7 +50,11 @@ export const verifySubscriptionValidation = [
 ];
 
 export const cancelSubscriptionValidation = [
-  param("id").isInt().withMessage("ID must be an integer"),
+  param("id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("ID must be a non-empty string"),
   body("adminRemarks")
     .optional()
     .isString()

@@ -2,6 +2,7 @@ import { prisma } from "../../lib/prisma.js";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import s3Client from "../../config/storage/s3.js";
+import { generateId } from "../../utils/generateId.js";
 
 export const createService = async (req, res) => {
   try {
@@ -9,6 +10,7 @@ export const createService = async (req, res) => {
 
     const newService = await prisma.service.create({
       data: {
+        id: generateId.service(),
         title,
         description,
         thumbnailUrlKey,
@@ -91,7 +93,7 @@ export const getServiceById = async (req, res) => {
   try {
     const { id } = req.params;
     const service = await prisma.service.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
     });
     if (!service) {
       return res
@@ -126,7 +128,7 @@ export const updateService = async (req, res) => {
     const { id } = req.params;
     const { title, description, thumbnailUrlKey, isActive, price } = req.body;
     const updatedService = await prisma.service.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: {
         title,
         description,
@@ -152,7 +154,7 @@ export const deleteService = async (req, res) => {
   try {
     const { id } = req.params;
     await prisma.service.delete({
-      where: { id: parseInt(id) },
+      where: { id },
     });
     return res
       .status(200)
@@ -168,7 +170,7 @@ export const deleteService = async (req, res) => {
 export const servicesNotIncluded = async (req, res) => {
   try {
     const { packageId } = req.params;
-    const parsedPackageId = parseInt(packageId);
+    const parsedPackageId = packageId;
 
     const packageExists = await prisma.package.findUnique({
       where: { id: parsedPackageId },

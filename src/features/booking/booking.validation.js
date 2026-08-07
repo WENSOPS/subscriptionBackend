@@ -10,8 +10,10 @@ const validate = (req, res, next) => {
 
 export const createBookingValidation = [
   body("packageId")
-    .isInt({ gt: 0 })
-    .withMessage("Package ID must be a positive integer"),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Package ID must be a non-empty string"),
   body("packageName").isString().withMessage("Package name must be a string"),
   body("purchaseDate")
     .isISO8601()

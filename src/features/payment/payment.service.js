@@ -1,7 +1,8 @@
 import cashfree from "../../config/cashfree.js";
 import { prisma } from "../../lib/prisma.js";
 import { createSubscription } from "../subscription/subscription.service.js";
-import { findActiveProgramForPackage, checkReferralAlreadyRewarded } from "../referral/referral.service.js";
+import { findActiveProgramForPackage } from "../referral/referral.service.js";
+import { generateId } from "../../utils/generateId.js";
 
 export const createCashfreeOrder = async (
   orderId,
@@ -80,10 +81,54 @@ export const ensureSubscriptionCreated = async ({
   return { subscription, created: true };
 };
 
+/**
+ * Atomically marks a PENDING order as PAID and increments coupon usage.
+ * Returns { order, newlyPaid } — newlyPaid is false if already PAID or not found.
+ */
+export const markOrderAsPaid = async (cashfreeOrderId) => {
+  return prisma.$transaction(async (tx) => {
+    const updated = await tx.order.updateMany({
+      where: { cashfreeOrderId, status: "PENDING" },
+      data: { status: "PAID", paidAt: new Date() },
+    });
+
+    const order = await tx.order.findUnique({
+      where: { cashfreeOrderId },
+      select: {
+        id: true,
+        status: true,
+        userId: true,
+        packageId: true,
+        finalAmount: true,
+        couponId: true,
+        appliedReferralRewardId: true,
+        referralDiscountAmount: true,
+        user: { select: { name: true, mobileNumber: true } },
+      },
+    });
+
+    if (!order) {
+      return { order: null, newlyPaid: false };
+    }
+
+    if (updated.count === 0) {
+      return { order, newlyPaid: false };
+    }
+
+    if (order.couponId) {
+      await tx.coupon.update({
+        where: { id: order.couponId },
+        data: { usedCount: { increment: 1 } },
+      });
+    }
+
+    return { order, newlyPaid: true };
+  });
+};
+
 export const processReferralOnPayment = async (order) => {
   // 1. Redeems the applied referral reward if one was used
   if (order.appliedReferralRewardId) {
-    console.log("Create Reward")
     await prisma.referralReward.update({
       where: { id: order.appliedReferralRewardId },
       data: {
@@ -106,56 +151,67 @@ export const processReferralOnPayment = async (order) => {
   if (buyer && buyer.referredByUserId) {
     const activeProgram = await findActiveProgramForPackage(order.packageId);
     if (activeProgram && activeProgram.rewardOnSignup === false) {
-      // Check if referee has already been rewarded for this program
-      const alreadyRewarded = await checkReferralAlreadyRewarded(order.userId, activeProgram.id);
-      if (alreadyRewarded) {
-        return;
-      }
-
-      // Check program-wide limit (maxTotalRedemptions)
-      if (
-        activeProgram.maxTotalRedemptions !== null &&
-        activeProgram.totalRedemptionCount >= activeProgram.maxTotalRedemptions
-      ) {
-        return;
-      }
-
-      // Check per-user referrer limit (maxRedemptionsPerUser)
-      if (activeProgram.maxRedemptionsPerUser !== null) {
-        const referrerUsageCount = await prisma.trackReferral.count({
-          where: {
-            referrerUserId: buyer.referredByUserId,
-            referralProgramId: activeProgram.id,
-          },
-        });
-        if (referrerUsageCount >= activeProgram.maxRedemptionsPerUser) {
-          return;
-        }
-      }
-
-      // Verify the purchased package is a trigger package
       const isTriggerPackage = activeProgram.referrerTriggerPackages.some(
-        (p) => p.packageId === order.packageId
+        (p) => p.packageId === order.packageId,
       );
 
       if (isTriggerPackage) {
         await prisma.$transaction(async (tx) => {
+          const alreadyRewarded = await tx.trackReferral.findFirst({
+            where: {
+              refereeUserId: order.userId,
+              referralProgramId: activeProgram.id,
+            },
+          });
+          if (alreadyRewarded) {
+            return;
+          }
+
+          const program = await tx.referralProgram.findUnique({
+            where: { id: activeProgram.id },
+          });
+          if (
+            program.maxTotalRedemptions !== null &&
+            program.totalRedemptionCount >= program.maxTotalRedemptions
+          ) {
+            return;
+          }
+
+          if (program.maxRedemptionsPerUser !== null) {
+            const referrerUsageCount = await tx.trackReferral.count({
+              where: {
+                referrerUserId: buyer.referredByUserId,
+                referralProgramId: activeProgram.id,
+              },
+            });
+            if (referrerUsageCount >= program.maxRedemptionsPerUser) {
+              return;
+            }
+          }
+
           let referrerReward = null;
-          if (activeProgram.referrerRewardType && activeProgram.referrerRewardType !== "none") {
+          if (
+            activeProgram.referrerRewardType &&
+            activeProgram.referrerRewardType !== "none"
+          ) {
             const referrerRewardAmount =
               activeProgram.referrerRewardCalcType === "percentage"
                 ? 0
-                : (activeProgram.referrerRewardValue || 0);
+                : activeProgram.referrerRewardValue || 0;
 
             referrerReward = await tx.referralReward.create({
               data: {
+                id: generateId.referralReward(),
                 userId: buyer.referredByUserId,
-                rewardCalcType: activeProgram.referrerRewardCalcType || "fixed",
+                rewardCalcType:
+                  activeProgram.referrerRewardCalcType || "fixed",
                 rewardValue: activeProgram.referrerRewardValue || 0,
                 rewardAmountINR: referrerRewardAmount,
                 eligiblePackageIds:
                   activeProgram.referrerPackageScope === "custom"
-                    ? activeProgram.referrerAllowedPackages.map((p) => p.packageId)
+                    ? activeProgram.referrerAllowedPackages.map(
+                        (p) => p.packageId,
+                      )
                     : [],
                 isRedeemed: false,
               },
@@ -163,21 +219,27 @@ export const processReferralOnPayment = async (order) => {
           }
 
           let refereeReward = null;
-          if (activeProgram.refereeRewardType && activeProgram.refereeRewardType !== "none") {
+          if (
+            activeProgram.refereeRewardType &&
+            activeProgram.refereeRewardType !== "none"
+          ) {
             const refereeRewardAmount =
               activeProgram.refereeRewardCalcType === "percentage"
                 ? 0
-                : (activeProgram.refereeRewardValue || 0);
+                : activeProgram.refereeRewardValue || 0;
 
             refereeReward = await tx.referralReward.create({
               data: {
+                id: generateId.referralReward(),
                 userId: order.userId,
                 rewardCalcType: activeProgram.refereeRewardCalcType || "fixed",
                 rewardValue: activeProgram.refereeRewardValue || 0,
                 rewardAmountINR: refereeRewardAmount,
                 eligiblePackageIds:
                   activeProgram.refereePackageScope === "custom"
-                    ? activeProgram.refereeAllowedPackages.map((p) => p.packageId)
+                    ? activeProgram.refereeAllowedPackages.map(
+                        (p) => p.packageId,
+                      )
                     : [],
                 isRedeemed: false,
               },
@@ -186,6 +248,7 @@ export const processReferralOnPayment = async (order) => {
 
           await tx.trackReferral.create({
             data: {
+              id: generateId.trackReferral(),
               referralProgramId: activeProgram.id,
               referralProgramNameSnapshot: activeProgram.name,
               referrerUserId: buyer.referredByUserId,
@@ -211,7 +274,9 @@ export const processReferralOnPayment = async (order) => {
                     eligiblePackageIds: refereeReward.eligiblePackageIds,
                   }
                 : null,
-              referrerReferralRewardId: referrerReward ? referrerReward.id : null,
+              referrerReferralRewardId: referrerReward
+                ? referrerReward.id
+                : null,
               triggeringOrderId: order.id,
             },
           });

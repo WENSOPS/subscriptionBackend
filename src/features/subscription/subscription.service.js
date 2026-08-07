@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { generateId } from "../../utils/generateId.js";
 
 const getEndDate = (startDate, duration) => {
   const start = new Date(startDate);
@@ -15,7 +16,7 @@ export const createSubscription = async (
 ) => {
   try {
     const pkg = await prisma.package.findUnique({
-      where: { id: parseInt(packageId) },
+      where: { id: packageId },
       include: {
         packageServices: {
           select: {
@@ -32,10 +33,14 @@ export const createSubscription = async (
 
     const subscription = await prisma.subscription.create({
       data: {
-        userId: parseInt(userId),
-        packageId: parseInt(packageId),
+        id: generateId.subscription(),
+        userId,
+        packageId,
         startDate: new Date(startDate),
-        endDate: getEndDate(startDate, pkg.validity) || null,
+        endDate:
+          pkg.validity != null
+            ? getEndDate(startDate, pkg.validity)
+            : getEndDate(startDate, 12),
         status,
         paymentId,
         tripsTotal: pkg.trips,

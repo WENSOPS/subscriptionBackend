@@ -41,8 +41,10 @@ export const serviceIdValidationRules = () => {
 export const servicesNotIncludedValidationRules = () => {
   return [
     param("packageId")
-      .isInt({ gt: 0 })
-      .withMessage("Package ID must be a positive integer"),
+      .isString()
+      .trim()
+      .notEmpty()
+      .withMessage("Package ID must be a non-empty string"),
     validate,
   ];
 };

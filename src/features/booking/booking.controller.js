@@ -4,6 +4,7 @@ import { sendInvoiceEmail } from "../../services/mail.service.js";
 import { fetchImageBuffer } from "../../services/pdf.service.js";
 import { getInvoiceDownloadUrl } from "../../services/s3.service.js";
 import { generateInvoiceNumber } from "../../utils/invoiceHelpers.js";
+import { generateId } from "../../utils/generateId.js";
 import { ok, notFound, internalError, created } from "../../utils/response.js";
 
 export const createBooking = async (req, res) => {
@@ -20,6 +21,7 @@ export const createBooking = async (req, res) => {
     } = req.body;
     const booking = await prisma.booking.create({
       data: {
+        id: generateId.booking(),
         userId: req.user.userId,
         packageId,
         packageName,
@@ -117,7 +119,7 @@ export const updateStatus = async (req, res) => {
     const { id } = req.params;
     const { status } = req.body;
     const booking = await prisma.booking.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: { status },
     });
     ok(res, booking);
@@ -157,7 +159,7 @@ export const webhookUpdate = async (req, res) => {
         },
       }),
     ]);
-    if (booking.count !== 0 && orderStatus === "SUCCESS") {
+    if (booking.count !== 0 && orderStatus === "SUCCESS" && bookingData) {
       const { invoiceNumber, s3Key } = await processInvoice({
         id: bookingData.id,
         customer: {
@@ -192,7 +194,7 @@ export const generateInvoice = async (req, res) => {
   try {
     const { id } = req.params;
     const booking = await prisma.booking.findUnique({
-      where: { id: parseInt(id), userId: req.user.userId },
+        where: { id, userId: req.user.userId },
       select: {
         packageName: true,
         purchaseAmount: true,
@@ -251,7 +253,7 @@ export const generateInvoice = async (req, res) => {
       });
 
       await prisma.booking.update({
-        where: { id: parseInt(id) },
+        where: { id },
         data: { invoiceKey: s3Key, invoiceNumber: invoiceNumber },
       });
 

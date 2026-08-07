@@ -15,16 +15,20 @@ export const createPaymentValidation = [
   body("packageId")
     .exists()
     .withMessage("packageId is required")
-    .isInt({ gt: 0 })
-    .withMessage("packageId must be a positive integer"),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("packageId must be a non-empty string"),
   body("couponCode")
     .optional({ nullable: true })
     .isString()
     .withMessage("couponCode must be a string"),
   body("referralRewardId")
     .optional({ nullable: true })
-    .isInt({ gt: 0 })
-    .withMessage("referralRewardId must be a positive integer"),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("referralRewardId must be a non-empty string"),
   validate,
 ];
 

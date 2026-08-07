@@ -8,23 +8,36 @@ const validate = (req, res, next) => {
   next();
 };
 
+const TRIP_TYPES = [
+  "airport-transfer",
+  "8Hour/80Km",
+  "8Hr/80Km",
+  "Full day",
+];
+
 export const createTripValidation = [
   body("assignmentId").isString().withMessage("Assignment ID must be a string"),
   body("subscriptionId")
-    .isInt()
-    .withMessage("Subscription ID must be an integer"),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Subscription ID must be a non-empty string"),
   body("pickupLocation")
     .isString()
     .withMessage("Pickup location must be a string"),
   body("dropLocation").isString().withMessage("Drop location must be a string"),
   body("tripDate").isISO8601().withMessage("Trip date must be a valid date"),
   body("tripType")
-    .isIn(["airport-transfer", "8Hour/80Km", "Full day"])
+    .isIn(TRIP_TYPES)
     .withMessage(
-      "Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'",
+      "Trip type must be one of: airport-transfer, 8Hour/80Km, 8Hr/80Km, Full day",
     ),
   body("services").isArray().withMessage("Services must be an array"),
-  body("services.*.id").isInt().withMessage("Service ID must be an integer"),
+  body("services.*.id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Service ID must be a non-empty string"),
   body("services.*.name")
     .isString()
     .withMessage("Service name must be a string"),
@@ -41,18 +54,27 @@ export const createTripValidation = [
 ];
 
 export const requestTripValidation = [
+  body("subscriptionId")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Subscription ID must be a non-empty string"),
   body("pickupLocation")
     .isString()
     .withMessage("Pickup location must be a string"),
   body("dropLocation").isString().withMessage("Drop location must be a string"),
   body("tripDate").isISO8601().withMessage("Trip date must be a valid date"),
   body("tripType")
-    .isIn(["airport-transfer", "8Hr/80Km", "Full day"])
+    .isIn(TRIP_TYPES)
     .withMessage(
-      "Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'",
+      "Trip type must be one of: airport-transfer, 8Hour/80Km, 8Hr/80Km, Full day",
     ),
   body("services").isArray().withMessage("Services must be an array"),
-  body("services.*.id").isInt().withMessage("Service ID must be an integer"),
+  body("services.*.id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Service ID must be a non-empty string"),
   body("services.*.name")
     .isString()
     .withMessage("Service name must be a string"),
@@ -65,13 +87,21 @@ export const requestTripValidation = [
 ];
 
 export const approveTripValidation = [
-  param("id").isInt().withMessage("Trip ID must be an integer"),
+  param("id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Trip ID must be a non-empty string"),
   body("assignmentId").isString().withMessage("Assignment ID must be a string"),
   validate,
 ];
 
 export const updateTripValidation = [
-  param("id").isInt().withMessage("Trip ID must be an integer"),
+  param("id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Trip ID must be a non-empty string"),
   body("pickupLocation")
     .optional()
     .isString()
@@ -86,9 +116,9 @@ export const updateTripValidation = [
     .withMessage("Trip date must be a valid date"),
   body("tripType")
     .optional()
-    .isIn(["airport-transfer", "8Hr/80Km", "Full day"])
+    .isIn(TRIP_TYPES)
     .withMessage(
-      "Trip type must be either 'airport-transfer','Full day' or '8Hr/80Km'",
+      "Trip type must be one of: airport-transfer, 8Hour/80Km, 8Hr/80Km, Full day",
     ),
   body("services")
     .optional()
@@ -111,11 +141,19 @@ export const updateTripValidation = [
 ];
 
 export const deleteTripValidation = [
-  param("id").isInt().withMessage("Trip ID must be an integer"),
+  param("id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Trip ID must be a non-empty string"),
   validate,
 ];
 
 export const getTripByIdValidation = [
-  param("id").isInt().withMessage("Trip ID must be an integer"),
+  param("id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Trip ID must be a non-empty string"),
   validate,
 ];

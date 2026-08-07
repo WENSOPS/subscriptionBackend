@@ -18,7 +18,7 @@ export const deductSubscriptionUsageForTrip = async (trip) => {
 
   const updatedServices = (subscription.services || []).map((service) => {
     const match = (trip.services || []).find(
-      (tripService) => Number(tripService.id) === Number(service.id),
+      (tripService) => String(tripService.id) === String(service.id),
     );
     return match
       ? { ...service, count: Math.max(0, (service.count ?? 0) - 1) }
@@ -39,8 +39,7 @@ export const checkSubscriptionAvailabilityForTrip = async (
   selectedServices = [],
   userId = null,
 ) => {
-  const parsedSubscriptionId = parseInt(subscriptionId, 10);
-  if (Number.isNaN(parsedSubscriptionId)) {
+  if (!subscriptionId || typeof subscriptionId !== "string") {
     return {
       ok: false,
       message: "Invalid subscription id",
@@ -49,7 +48,7 @@ export const checkSubscriptionAvailabilityForTrip = async (
   }
 
   const subscription = await prisma.subscription.findUnique({
-    where: { id: parsedSubscriptionId },
+    where: { id: subscriptionId },
   });
 
   if (!subscription) {
@@ -95,21 +94,21 @@ export const checkSubscriptionAvailabilityForTrip = async (
 
   const unavailableServices = requestedServices
     .map((service) => ({
-      id: parseInt(service?.id, 10),
+      id: service?.id,
       name: service?.name,
     }))
     .filter((service) => {
-      if (Number.isNaN(service.id)) {
+      if (!service.id) {
         return true;
       }
 
       const matchedService = subscriptionServices.find(
         (subscriptionService) =>
-          parseInt(subscriptionService?.id, 10) === service.id,
+          String(subscriptionService?.id) === String(service.id),
       );
 
       if (!matchedService) {
-        return false;
+        return true;
       }
       return (matchedService.count ?? 0) <= 0;
     });

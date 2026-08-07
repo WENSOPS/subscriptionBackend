@@ -1,5 +1,6 @@
 import { prisma } from "../../lib/prisma.js";
 import { calculateDiscount } from "../../services/discount.service.js";
+import { generateId } from "../../utils/generateId.js";
 import {
   ok,
   created,
@@ -67,11 +68,12 @@ export const createCoupon = async (req, res) => {
     }
 
     const packageIds = Array.isArray(packageId)
-      ? packageId.map((id) => parseInt(id)).filter((id) => !Number.isNaN(id))
+      ? packageId.filter((id) => typeof id === "string" && id.trim())
       : [];
 
     const newCoupon = await prisma.coupon.create({
       data: {
+        id: generateId.coupon(),
         code,
         discountType,
         discountValue,
@@ -100,7 +102,7 @@ export const getCouponById = async (req, res) => {
   const { id } = req.params;
   try {
     const coupon = await prisma.coupon.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
       include: {
         packages: {
           select: {
@@ -159,7 +161,7 @@ export const updateCoupon = async (req, res) => {
   } = req.body;
   try {
     const existingCoupon = await prisma.coupon.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
     });
     if (!existingCoupon) {
       return notFound(res, "Coupon not found");
@@ -177,9 +179,9 @@ export const updateCoupon = async (req, res) => {
     }
 
     if (Array.isArray(packageId)) {
-      const packageIds = packageId
-        .map((value) => parseInt(value))
-        .filter((value) => !Number.isNaN(value));
+      const packageIds = packageId.filter(
+        (value) => typeof value === "string" && value.trim(),
+      );
 
       updateData.packages = {
         set: packageIds.map((value) => ({ id: value })),
@@ -187,7 +189,7 @@ export const updateCoupon = async (req, res) => {
     }
 
     const updatedCoupon = await prisma.coupon.update({
-      where: { id: parseInt(id) },
+      where: { id },
       data: updateData,
       include: {
         packages: {
@@ -212,12 +214,12 @@ export const deleteCoupon = async (req, res) => {
   const { id } = req.params;
   try {
     const existingCoupon = await prisma.coupon.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
     });
     if (!existingCoupon) {
       return notFound(res, "Coupon not found");
     }
-    await prisma.coupon.delete({ where: { id: parseInt(id) } });
+    await prisma.coupon.delete({ where: { id } });
     noContent(res);
   } catch (error) {
     console.error("Error deleting coupon:", error);

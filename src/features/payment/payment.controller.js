@@ -1,11 +1,13 @@
 import { prisma } from "../../lib/prisma.js";
-import { createCashfreeOrder, calculateGST, ensureSubscriptionCreated, processReferralOnPayment } from "./payment.service.js";
+import { createCashfreeOrder, calculateGST, ensureSubscriptionCreated, processReferralOnPayment, markOrderAsPaid } from "./payment.service.js";
+import { generateId } from "../../utils/generateId.js";
 import {
   accepted,
   badRequest,
   notFound,
   ok,
   internalError,
+  forbidden,
 } from "../../utils/response.js";
 import { calculateDiscount } from "../../services/discount.service.js";
 import cashfree from "../../config/cashfree.js";
@@ -21,24 +23,26 @@ export const createOrder = async (req, res) => {
   const userId = req.user.userId;
 
   // ── Input validation ──────────────────────────────────────────
-  const parsedPackageId = parseInt(packageId, 10);
-  if (!packageId || isNaN(parsedPackageId)) {
+  if (!packageId || typeof packageId !== "string") {
     return badRequest(res, "Invalid packageId");
   }
 
-  const parsedReferralRewardId = referralRewardId ? parseInt(referralRewardId, 10) : null;
-  if (referralRewardId && isNaN(parsedReferralRewardId)) {
+  if (referralRewardId && typeof referralRewardId !== "string") {
     return badRequest(res, "Invalid referralRewardId");
   }
 
   try {
     // ── Fetch package ─────────────────────────────────────────────
     const packageData = await prisma.package.findUnique({
-      where: { id: parsedPackageId },
+      where: { id: packageId },
     });
 
     if (!packageData) {
       return notFound(res, "Package not found");
+    }
+
+    if (!packageData.isActive) {
+      return badRequest(res, "This package is not available for purchase");
     }
 
     // ── Validate coupon & calculate discount ──────────────────────
@@ -48,7 +52,7 @@ export const createOrder = async (req, res) => {
     if (couponCode) {
       // FIX: was missing `await`, so .discountAmount was called on a Promise
       const couponResult = await calculateDiscount(
-        parsedPackageId,
+        packageId,
         couponCode,
       ).catch((err) => {
         throw Object.assign(err, { isCouponError: true });
@@ -62,9 +66,9 @@ export const createOrder = async (req, res) => {
     let referralReward = null;
     let referralDiscountAmount = 0;
 
-    if (parsedReferralRewardId) {
+    if (referralRewardId) {
       referralReward = await prisma.referralReward.findUnique({
-        where: { id: parsedReferralRewardId }
+        where: { id: referralRewardId }
       });
       if (!referralReward) {
         return badRequest(res, "Referral reward not found");
@@ -84,7 +88,7 @@ export const createOrder = async (req, res) => {
       } catch (e) {
         eligiblePackages = [];
       }
-      if (eligiblePackages.length > 0 && !eligiblePackages.includes(parsedPackageId)) {
+      if (eligiblePackages.length > 0 && !eligiblePackages.includes(packageId)) {
         return badRequest(res, "This referral reward is not eligible for the selected package");
       }
 
@@ -92,7 +96,7 @@ export const createOrder = async (req, res) => {
       const tracks = await prisma.trackReferral.findMany({
         where: {
           OR: [
-            { referrerReferralRewardId: parsedReferralRewardId },
+            { referrerReferralRewardId: referralRewardId },
             { refereeUserId: userId }
           ]
         },
@@ -101,7 +105,7 @@ export const createOrder = async (req, res) => {
 
       let matchedProgram = null;
       for (const track of tracks) {
-        if (track.referrerReferralRewardId === parsedReferralRewardId) {
+        if (track.referrerReferralRewardId === referralRewardId) {
           matchedProgram = track.referralProgram;
           break;
         }
@@ -112,7 +116,7 @@ export const createOrder = async (req, res) => {
               ? JSON.parse(track.refereeRewardSnapshot)
               : track.refereeRewardSnapshot;
           } catch (e) { }
-          if (snapshot && snapshot.id === parsedReferralRewardId) {
+          if (snapshot && snapshot.id === referralRewardId) {
             matchedProgram = track.referralProgram;
             break;
           }
@@ -166,7 +170,7 @@ export const createOrder = async (req, res) => {
       orderId,
       orderAmount,
       "INR",
-      parsedPackageId,
+      packageId,
       {
         id: userId,
         name: req.user.name || "",
@@ -180,14 +184,15 @@ export const createOrder = async (req, res) => {
     const order = await prisma.$transaction(async (tx) => {
       const created = await tx.order.create({
         data: {
+          id: generateId.order(),
           userId,
-          packageId: parsedPackageId,
+          packageId,
           amount: packageData.discountedPrice,
           discountAmount,
           finalAmount: orderAmount,
           couponCode: couponCode || null,
           couponId: couponId || null,
-          appliedReferralRewardId: parsedReferralRewardId || null,
+          appliedReferralRewardId: referralRewardId || null,
           referralDiscountAmount: referralDiscountAmount || null,
           cashfreeOrderId: cashfreeResponse.orderId,
           paymentId: cashfreeResponse.paymentSessionId,
@@ -198,13 +203,6 @@ export const createOrder = async (req, res) => {
           status: "PENDING",
         },
       });
-      // Mark coupon as used within the same transaction
-      if (couponId) {
-        await tx.coupon.update({
-          where: { id: couponId },
-          data: { usageCount: { increment: 1 } },
-        });
-      }
 
       return created;
     });
@@ -213,6 +211,7 @@ export const createOrder = async (req, res) => {
       res,
       {
         orderId: order.id,
+        cashfreeOrderId: order.cashfreeOrderId,
         amount: orderAmount,
         discountAmount,
         referralDiscountAmount,
@@ -255,6 +254,10 @@ export const verifyPayment = async (req, res) => {
     return notFound(res, "Order not found");
   }
 
+  if (order.userId !== req.user.userId) {
+    return forbidden(res, "You are not authorized to verify this order");
+  }
+
   const customerName = order.user?.name;
 
   if (order.status === "PAID") {
@@ -271,45 +274,44 @@ export const verifyPayment = async (req, res) => {
     const cfStatus = cfResponse.data.order_status;
 
     if (cfStatus === "PAID") {
-      await prisma.order.update({
-        where: { cashfreeOrderId: orderId },
-        data: { status: "PAID", paidAt: new Date() },
-      });
-      order.status = "PAID";
+      const { order: paidOrder, newlyPaid } = await markOrderAsPaid(orderId);
+      if (newlyPaid && paidOrder) {
+        order.status = "PAID";
 
-      const formattedDate = new Date().toLocaleString("en-IN", {
-        timeZone: "Asia/Kolkata",
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-        hour12: true,
-      });
-
-      sendWhatsAppTemplate({
-        to: phone,
-        templateName: "payment_confirmed_client",
-        templateParams: [customerName, orderId, order.finalAmount, formattedDate],
-      });
-
-      sendWhatsAppTemplateToBroadcast(
-        "Testing Office",
-        "payment_confirmed_team",
-        [orderId, customerName, order.finalAmount, formattedDate],
-        phone,
-      );
-
-      try {
-        await ensureSubscriptionCreated({
-          userId: order.userId,
-          packageId: order.packageId,
-          paymentId: orderId,
+        const formattedDate = new Date().toLocaleString("en-IN", {
+          timeZone: "Asia/Kolkata",
+          day: "2-digit",
+          month: "short",
+          year: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: true,
         });
 
-        await processReferralOnPayment(order);
-      } catch (subErr) {
-        console.error("[verifyPayment] Error creating subscription or processing referral:", subErr);
+        sendWhatsAppTemplate({
+          to: phone,
+          templateName: "payment_confirmed_client",
+          templateParams: [customerName, orderId, paidOrder.finalAmount, formattedDate],
+        });
+
+        sendWhatsAppTemplateToBroadcast(
+          "Testing Office",
+          "payment_confirmed_team",
+          [orderId, customerName, paidOrder.finalAmount, formattedDate],
+          phone,
+        );
+
+        try {
+          await ensureSubscriptionCreated({
+            userId: paidOrder.userId,
+            packageId: paidOrder.packageId,
+            paymentId: orderId,
+          });
+
+          await processReferralOnPayment(paidOrder);
+        } catch (subErr) {
+          console.error("[verifyPayment] Error creating subscription or processing referral:", subErr);
+        }
       }
     }
   }
@@ -369,13 +371,14 @@ export const handleWebhook = async (req, res) => {
           return ok(res, { success: true });
         }
 
-        const updatedOrder = await prisma.order.update({
-          where: { cashfreeOrderId },
-          data: { status: "PAID", paidAt: new Date() },
-        });
+        const { order: paidOrder, newlyPaid } = await markOrderAsPaid(cashfreeOrderId);
 
-        const customerName = existingOrder.user?.name;
-        const phone = existingOrder.user?.mobileNumber;
+        if (!newlyPaid || !paidOrder) {
+          return ok(res, { success: true });
+        }
+
+        const customerName = paidOrder.user?.name;
+        const phone = paidOrder.user?.mobileNumber;
 
         const formattedDate = new Date().toLocaleString("en-IN", {
           timeZone: "Asia/Kolkata",
@@ -390,24 +393,24 @@ export const handleWebhook = async (req, res) => {
         sendWhatsAppTemplate({
           to: phone,
           templateName: "payment_confirmed_client",
-          templateParams: [customerName, cashfreeOrderId, existingOrder.finalAmount, formattedDate],
+          templateParams: [customerName, cashfreeOrderId, paidOrder.finalAmount, formattedDate],
         });
 
         sendWhatsAppTemplateToBroadcast(
           "Testing Office",
           "payment_confirmed_team",
-          [cashfreeOrderId, customerName, existingOrder.finalAmount, formattedDate],
+          [cashfreeOrderId, customerName, paidOrder.finalAmount, formattedDate],
           phone,
         );
 
         try {
           await ensureSubscriptionCreated({
-            userId: updatedOrder.userId,
-            packageId: updatedOrder.packageId,
+            userId: paidOrder.userId,
+            packageId: paidOrder.packageId,
             paymentId: cashfreeOrderId,
           });
 
-          await processReferralOnPayment(updatedOrder);
+          await processReferralOnPayment(paidOrder);
         } catch (subErr) {
           console.error("[webhook] Error creating subscription or processing referral:", subErr);
         }
@@ -476,41 +479,43 @@ const enrichOrdersWithReferralReward = async (orders) => {
 export const getAllPayments = async (req, res) => {
   const { page = 1, limit = 10, search = "" } = req.query;
 
+  const where = {
+    OR: [
+      {
+        user: {
+          name: {
+            contains: search,
+          },
+        },
+      },
+      {
+        package: {
+          name: {
+            contains: search,
+          },
+        },
+      },
+      {
+        OR: [
+          {
+            cashfreeOrderId: {
+              contains: search,
+            },
+          },
+          {
+            paymentId: {
+              contains: search,
+            },
+          },
+        ],
+      },
+    ],
+  };
+
   try {
     const [payments, totalCount] = await prisma.$transaction([
       prisma.order.findMany({
-        where: {
-          OR: [
-            {
-              user: {
-                name: {
-                  contains: search,
-                },
-              },
-            },
-            {
-              package: {
-                name: {
-                  contains: search,
-                },
-              },
-            },
-            {
-              OR: [
-                {
-                  cashfreeOrderId: {
-                    contains: search,
-                  },
-                },
-                {
-                  paymentId: {
-                    contains: search,
-                  },
-                },
-              ],
-            },
-          ],
-        },
+        where,
         include: {
           user: {
             select: {
@@ -533,26 +538,7 @@ export const getAllPayments = async (req, res) => {
         skip: (page - 1) * limit,
         take: parseInt(limit),
       }),
-      prisma.order.count({
-        where: {
-          OR: [
-            {
-              user: {
-                name: {
-                  contains: search,
-                },
-              },
-            },
-            {
-              package: {
-                name: {
-                  contains: search,
-                },
-              },
-            },
-          ],
-        },
-      }),
+      prisma.order.count({ where }),
     ]);
 
     await enrichOrdersWithReferralReward(payments);
@@ -573,7 +559,7 @@ export const getPaymentById = async (req, res) => {
   const { id } = req.params;
   try {
     const payment = await prisma.order.findUnique({
-      where: { id: parseInt(id) },
+      where: { id },
       include: {
         user: {
           select: {

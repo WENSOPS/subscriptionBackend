@@ -41,8 +41,8 @@ export const getAllUsers = async (req, res) => {
 
 export const getUserById = async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) return badRequest(res, "Invalid user ID");
+    const id = req.params.id;
+    if (!id) return badRequest(res, "Invalid user ID");
 
     const user = await prisma.user.findUnique({
       where: { id },
@@ -62,8 +62,8 @@ export const getUserById = async (req, res) => {
 
 export const updateUser = async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) return badRequest(res, "Invalid user ID");
+    const id = req.params.id;
+    if (!id) return badRequest(res, "Invalid user ID");
 
     const { userId } = req.user;
     if (req.user.role === "user" && String(userId) !== String(id))
@@ -88,7 +88,21 @@ export const updateUser = async (req, res) => {
     if (await userService.isMobileTaken(targetMobile, id))
       return badRequest(res, "Mobile number is already in use by another user");
 
-    const user = await userService.updateUserRecord(id, { name, email, mobileNumber, role, city }, existingUser);
+    if (role !== undefined && role !== existingUser.role && req.user.role !== "admin") {
+      return forbidden(res, "Only admins can change user roles");
+    }
+
+    const user = await userService.updateUserRecord(
+      id,
+      {
+        name,
+        email,
+        mobileNumber,
+        role: req.user.role === "admin" ? role : undefined,
+        city,
+      },
+      existingUser,
+    );
     ok(res, user, "User updated successfully");
   } catch (error) {
     console.error("Error updating user:", error);

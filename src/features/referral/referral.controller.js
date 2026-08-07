@@ -1,4 +1,5 @@
 import { prisma } from "../../lib/prisma.js";
+import { generateId } from "../../utils/generateId.js";
 import {
   ok,
   internalError,
@@ -109,6 +110,7 @@ export const getUserReferralSummary = async (req, res) => {
       const categoryCode = await generateReferralCode(trackCategory);
       track = await prisma.userReferralCategoryTrack.create({
         data: {
+          id: generateId.userReferralCategoryTrack(),
           userId: userId,
           referralProgramId: activeProgram.id,
           category: trackCategory,
@@ -146,9 +148,8 @@ export const getUserReferralSummary = async (req, res) => {
       } catch (e) {
         ids = [];
       }
-      ids.forEach((id) => {
-        const num = Number(id);
-        if (!isNaN(num)) packageIdsSet.add(num);
+      ids.forEach((pkgId) => {
+        if (pkgId) packageIdsSet.add(pkgId);
       });
     });
 
@@ -175,9 +176,9 @@ export const getUserReferralSummary = async (req, res) => {
       } catch (e) {
         ids = [];
       }
-      const eligiblePackages = ids.map((id) => ({
-        id: Number(id),
-        name: packageMap[Number(id)] || `Package #${id}`,
+      const eligiblePackages = ids.map((pkgId) => ({
+        id: pkgId,
+        name: packageMap[pkgId] || `Package #${pkgId}`,
       }));
       const eligiblePackageNames = eligiblePackages.map((p) => p.name);
 
@@ -390,38 +391,41 @@ export const applyReferralCode = async (req, res) => {
       );
     }
 
-    // 9. Atomically apply referral:
-    //    - Set referredByUserId on referee (unique constraint prevents double-apply)
-    //    - Conditionally increment redemptions only if limit not yet reached
-    //      (guards against race condition on per-code limit)
-    const [, updatedTrack] = await prisma.$transaction([
-      prisma.user.update({
-        where: { id: userId },
-        data: { referredByUserId: referrerUser.id },
-      }),
-      prisma.userReferralCategoryTrack.updateMany({
-        where: {
-          id: referrerTrack.id,
-          OR: [
-            { maxRedemptions: null },
-            { redemptions: { lt: referrerTrack.maxRedemptions } },
-          ],
-        },
-        data: {
-          redemptions: { increment: 1 },
-          lastRedeemedAt: new Date(),
-        },
-      }),
-    ]);
+    // 9. Atomically apply referral — increment redemptions first, then set referredByUserId
+    try {
+      await prisma.$transaction(async (tx) => {
+        const updatedTrack = await tx.userReferralCategoryTrack.updateMany({
+          where: {
+            id: referrerTrack.id,
+            OR: [
+              { maxRedemptions: null },
+              { redemptions: { lt: referrerTrack.maxRedemptions } },
+            ],
+          },
+          data: {
+            redemptions: { increment: 1 },
+            lastRedeemedAt: new Date(),
+          },
+        });
 
-    // If updatedTrack.count === 0 the code hit its limit between our check
-    // and the transaction — roll back is automatic; return an error.
-    if (updatedTrack.count === 0) {
-      return errorResponse(
-        res,
-        "This referral code has reached its maximum usage limit",
-        200,
-      );
+        if (updatedTrack.count === 0) {
+          throw new Error("REFERRAL_LIMIT_REACHED");
+        }
+
+        await tx.user.update({
+          where: { id: userId },
+          data: { referredByUserId: referrerUser.id },
+        });
+      });
+    } catch (txError) {
+      if (txError.message === "REFERRAL_LIMIT_REACHED") {
+        return errorResponse(
+          res,
+          "This referral code has reached its maximum usage limit",
+          200,
+        );
+      }
+      throw txError;
     }
 
     // 10. Trigger signup rewards if configured
@@ -568,9 +572,9 @@ export const createReferralProgram = async (req, res) => {
     // Fetch package names to snapshot them at creation time
     const allCreatePackageIds = [
       ...new Set([
-        ...referrerTriggerPackageIds.map((id) => parseInt(id, 10)),
-        ...referrerAllowedPackageIds.map((id) => parseInt(id, 10)),
-        ...refereeAllowedPackageIds.map((id) => parseInt(id, 10)),
+        ...referrerTriggerPackageIds.filter(Boolean),
+        ...referrerAllowedPackageIds.filter(Boolean),
+        ...refereeAllowedPackageIds.filter(Boolean),
       ].filter(Boolean)),
     ];
     let createPackageNameMap = {};
@@ -601,6 +605,7 @@ export const createReferralProgram = async (req, res) => {
 
     const program = await prisma.referralProgram.create({
       data: {
+        id: generateId.referralProgram(),
         name,
         packageCategory,
         startDate: startDate ? new Date(startDate) : null,
@@ -626,21 +631,24 @@ export const createReferralProgram = async (req, res) => {
           refereeRewardValue != null ? parseFloat(refereeRewardValue) : null,
         refereePackageScope: refereePackageScope || null,
         referrerTriggerPackages: {
-          create: referrerTriggerPackageIds.map((id) => ({
-            packageId: parseInt(id, 10),
-            packageNameSnapshot: createPackageNameMap[parseInt(id, 10)] || null,
+          create: referrerTriggerPackageIds.map((pkgId) => ({
+            id: generateId.referralTriggerPackage(),
+            packageId: pkgId,
+            packageNameSnapshot: createPackageNameMap[pkgId] || null,
           })),
         },
         referrerAllowedPackages: {
-          create: referrerAllowedPackageIds.map((id) => ({
-            packageId: parseInt(id, 10),
-            packageNameSnapshot: createPackageNameMap[parseInt(id, 10)] || null,
+          create: referrerAllowedPackageIds.map((pkgId) => ({
+            id: generateId.referralProgramReferrerPackage(),
+            packageId: pkgId,
+            packageNameSnapshot: createPackageNameMap[pkgId] || null,
           })),
         },
         refereeAllowedPackages: {
-          create: refereeAllowedPackageIds.map((id) => ({
-            packageId: parseInt(id, 10),
-            packageNameSnapshot: createPackageNameMap[parseInt(id, 10)] || null,
+          create: refereeAllowedPackageIds.map((pkgId) => ({
+            id: generateId.referralProgramRefereePackage(),
+            packageId: pkgId,
+            packageNameSnapshot: createPackageNameMap[pkgId] || null,
           })),
         },
       },
@@ -718,8 +726,8 @@ export const getReferralPrograms = async (req, res) => {
 
 export const getReferralProgramById = async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) {
+    const id = req.params.id;
+    if (!id) {
       return errorResponse(res, "Invalid referral program ID", 400);
     }
 
@@ -774,8 +782,8 @@ export const getReferralProgramById = async (req, res) => {
 
 export const updateReferralProgram = async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) {
+    const id = req.params.id;
+    if (!id) {
       return errorResponse(res, "Invalid referral program ID", 400);
     }
 
@@ -915,9 +923,9 @@ export const updateReferralProgram = async (req, res) => {
     // Fetch package names to snapshot them at update time
     const allUpdatePackageIds = [
       ...new Set([
-        ...(referrerTriggerPackageIds || []).map((id) => parseInt(id, 10)),
-        ...(referrerAllowedPackageIds || []).map((id) => parseInt(id, 10)),
-        ...(refereeAllowedPackageIds || []).map((id) => parseInt(id, 10)),
+        ...(referrerTriggerPackageIds || []).filter(Boolean),
+        ...(referrerAllowedPackageIds || []).filter(Boolean),
+        ...(refereeAllowedPackageIds || []).filter(Boolean),
       ].filter(Boolean)),
     ];
     let updatePackageNameMap = {};
@@ -981,27 +989,30 @@ export const updateReferralProgram = async (req, res) => {
       ...(referrerTriggerPackageIds !== undefined && {
         referrerTriggerPackages: {
           deleteMany: {},
-          create: (referrerTriggerPackageIds || []).map((id) => ({
-            packageId: parseInt(id, 10),
-            packageNameSnapshot: updatePackageNameMap[parseInt(id, 10)] || null,
+          create: (referrerTriggerPackageIds || []).map((pkgId) => ({
+            id: generateId.referralTriggerPackage(),
+            packageId: pkgId,
+            packageNameSnapshot: updatePackageNameMap[pkgId] || null,
           })),
         },
       }),
       ...(referrerAllowedPackageIds !== undefined && {
         referrerAllowedPackages: {
           deleteMany: {},
-          create: (referrerAllowedPackageIds || []).map((id) => ({
-            packageId: parseInt(id, 10),
-            packageNameSnapshot: updatePackageNameMap[parseInt(id, 10)] || null,
+          create: (referrerAllowedPackageIds || []).map((pkgId) => ({
+            id: generateId.referralProgramReferrerPackage(),
+            packageId: pkgId,
+            packageNameSnapshot: updatePackageNameMap[pkgId] || null,
           })),
         },
       }),
       ...(refereeAllowedPackageIds !== undefined && {
         refereeAllowedPackages: {
           deleteMany: {},
-          create: (refereeAllowedPackageIds || []).map((id) => ({
-            packageId: parseInt(id, 10),
-            packageNameSnapshot: updatePackageNameMap[parseInt(id, 10)] || null,
+          create: (refereeAllowedPackageIds || []).map((pkgId) => ({
+            id: generateId.referralProgramRefereePackage(),
+            packageId: pkgId,
+            packageNameSnapshot: updatePackageNameMap[pkgId] || null,
           })),
         },
       }),
@@ -1029,8 +1040,8 @@ export const updateReferralProgram = async (req, res) => {
 
 export const deleteReferralProgram = async (req, res) => {
   try {
-    const id = parseInt(req.params.id, 10);
-    if (isNaN(id)) {
+    const id = req.params.id;
+    if (!id) {
       return errorResponse(res, "Invalid referral program ID", 200);
     }
 
@@ -1083,7 +1094,7 @@ export const deleteReferralProgram = async (req, res) => {
 
 export const getReferralProgramTracks = async (req, res) => {
   try {
-    const programId = parseInt(req.params.id, 10);
+    const programId = req.params.id;
     if (isNaN(programId)) {
       return errorResponse(res, "Invalid referral program ID", 200);
     }

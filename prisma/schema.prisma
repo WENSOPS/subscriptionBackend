@@ -13,15 +13,15 @@ datasource db {
 }
 
 model User {
-  id                  Int              @id @default(autoincrement())
+  id                  String           @id @db.VarChar(50)
   name                String?
   mobileNumber        String           @unique
   email               String?          @unique
   role                Role             @default(user)
   city                String?
   refreshTokens       Json?            // Store refresh tokens as a JSON array
-            
-  referredByUserId    Int?
+
+  referredByUserId    String?          @db.VarChar(50)
   referredByUser      User?            @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
   referredUsers       User[]           @relation("UserReferrals")
   referralRewards     ReferralReward[]
@@ -34,11 +34,12 @@ model User {
   refereeAuditLogs    TrackReferral[]  @relation("RefereeTracks")
   createdAt           DateTime         @default(now())
   updatedAt           DateTime         @updatedAt
+
   @@map("users")
 }
 
 model Service {
-  id              Int              @id @default(autoincrement())
+  id              String           @id @db.VarChar(50)
   title           String           @unique
   description     String?
   thumbnailUrlKey String?
@@ -47,12 +48,13 @@ model Service {
   createdAt       DateTime         @default(now())
   price           Float            @default(100)
   updatedAt       DateTime         @updatedAt
+
   @@map("services")
 }
 
 model Offers {
-  id        Int      @id @default(autoincrement())
-  packageId Int
+  id        String   @id @db.VarChar(50)
+  packageId String   @db.VarChar(50)
   end_date  DateTime
 }
 
@@ -62,7 +64,7 @@ enum PackageMediaType {
 }
 
 model Package {
-  id              Int      @id @default(autoincrement())
+  id              String   @id @db.VarChar(50)
   name            String   @unique
   regularPrice    Float
   discountedPrice Float
@@ -97,8 +99,8 @@ model Package {
 }
 
 model PackageMedia {
-  id        Int              @id @default(autoincrement())
-  packageId Int
+  id        String           @id @db.VarChar(50)
+  packageId String           @db.VarChar(50)
   package   Package          @relation(fields: [packageId], references: [id], onDelete: Cascade)
   type      PackageMediaType
   urlKey    String
@@ -110,10 +112,10 @@ model PackageMedia {
 }
 
 model PackageService {
-  id        Int  @id @default(autoincrement())
-  packageId Int
-  serviceId Int
-  count     Int  @default(1)
+  id        String @id @db.VarChar(50)
+  packageId String @db.VarChar(50)
+  serviceId String @db.VarChar(50)
+  count     Int    @default(1)
 
   package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
   service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
@@ -126,7 +128,7 @@ model PackageService {
 }
 
 model Coupon {
-  id            Int          @id @default(autoincrement())
+  id            String       @id @db.VarChar(50)
   code          String       @unique
   discountType  DiscountType
   discountValue Float
@@ -137,45 +139,47 @@ model Coupon {
   packages      Package[]
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
+
   @@map("coupons")
 }
 
 model Order {
-  id                      Int       @id @default(autoincrement())
-  userId                  Int
-  packageId               Int
+  id                      String    @id @db.VarChar(50)
+  userId                  String    @db.VarChar(50)
+  packageId               String    @db.VarChar(50)
   amount                  Float
   discountAmount          Float
   finalAmount             Float
   couponCode              String?
-  couponId                Int?
+  couponId                String?   @db.VarChar(50)
   paidAt                  DateTime?
   status                  String
   currency                String    @default("INR")
   paymentId               String?
   cashfreeOrderId         String?   @unique
   appliedReferralCode     String?
-  appliedReferralRewardId Int?
+  appliedReferralRewardId String?   @db.VarChar(50)
   referralDiscountAmount  Float?
   createdAt               DateTime  @default(now())
   updatedAt               DateTime  @updatedAt
 
   user    User    @relation(fields: [userId],    references: [id])
   package Package @relation(fields: [packageId], references: [id])
+
   @@map("orders")
 }
 
 model Subscription {
-  id            Int                @id @default(autoincrement())
-  userId        Int
-  packageId     Int
+  id            String             @id @db.VarChar(50)
+  userId        String             @db.VarChar(50)
+  packageId     String             @db.VarChar(50)
   startDate     DateTime
   endDate       DateTime
   status        SubscriptionStatus @default(pending)
   paymentId     String?
   tripsTotal    Int?
   tripsUsed     Int?               @default(0)
-  verifiedBy    Int?               // Store admin ID who verified
+  verifiedBy    String?            @db.VarChar(50) // Store admin ID who verified
   verifiedAt    DateTime?
   adminRemarks  String?
   vehicleType   String?
@@ -188,23 +192,24 @@ model Subscription {
   user    User    @relation(fields: [userId],    references: [id])
   package Package @relation(fields: [packageId], references: [id])
   trips   Trip[]
+
   @@map("subscriptions")
 }
 
 model Trip {
-  id                 Int        @id @default(autoincrement())
-  userId             Int
-  subscriptionId     Int
+  id                 String     @id @db.VarChar(50)
+  userId             String     @db.VarChar(50)
+  subscriptionId     String     @db.VarChar(50)
   assignmentId       String?
   pickupLocation     String
   dropLocation       String
   tripDate           DateTime
   tripType           String
   status             tripStatus @default(requested)
-  confirmedBy        Int?
-  cancelledBy        Int?
+  confirmedBy        String?    @db.VarChar(50)
+  cancelledBy        String?    @db.VarChar(50)
   cancellationReason String?
-  createdBy          Int?
+  createdBy          String?    @db.VarChar(50)
   services           Json?      // restructured — see below
   additionalAmount   Float      @default(0) // sum of addon charges only
 
@@ -219,9 +224,9 @@ model Trip {
 
 // its for emergency , later need to delete it
 model Booking {
-  id              Int           @id @default(autoincrement())
-  userId          Int
-  packageId       Int           // frontend id for now
+  id              String        @id @db.VarChar(50)
+  userId          String        @db.VarChar(50)
+  packageId       String        @db.VarChar(50) // frontend id for now
   packageName     String
   cashfreeOrderId String?       @unique
   status          BookingStatus @default(initiated)
@@ -235,6 +240,7 @@ model Booking {
   user            User          @relation(fields: [userId], references: [id])
   createdAt       DateTime      @default(now())
   updatedAt       DateTime      @updatedAt
+
   @@map("bookings")
 }
 
@@ -273,7 +279,7 @@ enum BookingStatus {
 }
 
 model Offer {
-  id        Int       @id @default(autoincrement())
+  id        String    @id @db.VarChar(50)
   slug      String    @unique
 
   isActive  Boolean   @default(true)
@@ -314,9 +320,9 @@ model Offer {
 }
 
 model OfferBenefit {
-  id      Int   @id @default(autoincrement())
-  offerId Int
-  offer   Offer @relation(fields: [offerId], references: [id], onDelete: Cascade)
+  id      String @id @db.VarChar(50)
+  offerId String @db.VarChar(50)
+  offer   Offer  @relation(fields: [offerId], references: [id], onDelete: Cascade)
 
   icon        String      // "Tag" | "Star" | "CheckCircle"
   title       String      // "Current FY Pricing"
@@ -346,7 +352,7 @@ enum PackageRewardType {
 }
 
 model ReferralProgram {
-  id                      Int                   @id @default(autoincrement())
+  id                      String                @id @db.VarChar(50)
   name                    String
   packageCategory         String
   startDate               DateTime?
@@ -374,33 +380,35 @@ model ReferralProgram {
 }
 
 model ReferralTriggerPackage {
-  id                Int             @id @default(autoincrement())
-  referralProgramId Int
-  packageId         Int
-  referralProgram   ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
+  id                  String          @id @db.VarChar(50)
+  referralProgramId   String          @db.VarChar(50)
+  packageId           String          @db.VarChar(50)
+  referralProgram     ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
   packageNameSnapshot String?
+
   @@unique([referralProgramId, packageId])
 }
 
 model ReferralProgramReferrerPackage {
-  id                Int             @id @default(autoincrement())
-  referralProgramId Int
-  packageId         Int
+  id                  String          @id @db.VarChar(50)
+  referralProgramId   String          @db.VarChar(50)
+  packageId           String          @db.VarChar(50)
   packageNameSnapshot String?
-  referralProgram   ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
+  referralProgram     ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
 }
 
 model ReferralProgramRefereePackage {
-  id                Int             @id @default(autoincrement())
-  referralProgramId Int
-  packageId         Int
+  id                  String          @id @db.VarChar(50)
+  referralProgramId   String          @db.VarChar(50)
+  packageId           String          @db.VarChar(50)
   packageNameSnapshot String?
-  referralProgram   ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
+  referralProgram     ReferralProgram @relation(fields: [referralProgramId], references: [id], onDelete: Cascade)
 }
+
 model UserReferralCategoryTrack {
-  id                Int       @id @default(autoincrement())
-  userId            Int
-  referralProgramId Int
+  id                String    @id @db.VarChar(50)
+  userId            String    @db.VarChar(50)
+  referralProgramId String    @db.VarChar(50)
   category          String    // snapshot of ReferralProgram.packageCategory
   referralCode      String    @unique
   redemptions       Int       @default(0)
@@ -416,32 +424,34 @@ model UserReferralCategoryTrack {
   @@index([category])
   @@map("user_referral_category_track")
 }
+
 model TrackReferral {
-  id                          Int         @id @default(autoincrement())
-  referralProgramId           Int
+  id                          String      @id @db.VarChar(50)
+  referralProgramId           String      @db.VarChar(50)
   referralProgramNameSnapshot String
-  referrerUserId              Int
-  refereeUserId               Int
+  referrerUserId              String      @db.VarChar(50)
+  refereeUserId               String      @db.VarChar(50)
   triggeredBySignup           Boolean
   referrerRewardTypeSnapshot  RewardType?
   referrerRewardSnapshot      Json?
   refereeRewardTypeSnapshot   RewardType?
   refereeRewardSnapshot       Json?
-  referrerReferralRewardId    Int?
-  triggeringOrderId           Int?
+  referrerReferralRewardId    String?     @db.VarChar(50)
+  triggeringOrderId           String?     @db.VarChar(50)
   createdAt                   DateTime    @default(now())
   updatedAt                   DateTime    @updatedAt
 
   referralProgram ReferralProgram @relation(fields: [referralProgramId], references: [id])
   referrer        User            @relation("ReferrerTracks", fields: [referrerUserId], references: [id])
   referee         User            @relation("RefereeTracks", fields: [refereeUserId], references: [id])
+
   @@index([referrerUserId])
   @@index([refereeUserId])
 }
 
 model ReferralReward {
-  id                 Int          @id @default(autoincrement())
-  userId             Int
+  id                 String       @id @db.VarChar(50)
+  userId             String       @db.VarChar(50)
   rewardCalcType     DiscountType
   rewardValue        Float
   rewardAmountINR    Float

@@ -29,7 +29,11 @@ export const validateCreateCoupon = [
 ];
 
 export const validateUpdateCoupon = [
-  param("id").isInt().withMessage("Coupon ID must be an integer"),
+  param("id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Coupon ID must be a non-empty string"),
   body("code").optional().isString().notEmpty().withMessage("Code is required"),
   body("discountType")
     .optional()
@@ -53,7 +57,11 @@ export const validateUpdateCoupon = [
 ];
 
 export const validateGetCoupon = [
-  param("id").isInt().withMessage("Coupon ID must be an integer"),
+  param("id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Coupon ID must be a non-empty string"),
   validate,
 ];
 
@@ -61,12 +69,18 @@ export const validateCouponQuery = [
   query("code").isString().notEmpty().withMessage("Code is required"),
   query("packageId")
     .optional()
-    .isInt()
-    .withMessage("Package ID must be an integer"),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Package ID must be a non-empty string"),
   validate,
 ];
 
 export const validateDeleteCoupon = [
-  param("id").isInt().withMessage("Coupon ID must be an integer"),
+  param("id")
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Coupon ID must be a non-empty string"),
   validate,
 ];

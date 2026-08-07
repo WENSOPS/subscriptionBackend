@@ -115,17 +115,19 @@ export const createReferralProgramValidation = [
     .isArray()
     .withMessage("referrerTriggerPackageIds must be an array"),
   body("referrerTriggerPackageIds.*")
-    .isInt({ gt: 0 })
-    .withMessage("referrerTriggerPackageIds elements must be positive integers")
-    .toInt(),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("referrerTriggerPackageIds elements must be non-empty strings"),
   body("referrerAllowedPackageIds")
     .optional()
     .isArray()
     .withMessage("referrerAllowedPackageIds must be an array"),
   body("referrerAllowedPackageIds.*")
-    .isInt({ gt: 0 })
-    .withMessage("referrerAllowedPackageIds elements must be positive integers")
-    .toInt(),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("referrerAllowedPackageIds elements must be non-empty strings"),
   body("refereeRewardType")
     .optional({ nullable: true })
     .isIn(["none", "discount", "wallet"])
@@ -154,17 +156,19 @@ export const createReferralProgramValidation = [
     .isArray()
     .withMessage("refereeAllowedPackageIds must be an array"),
   body("refereeAllowedPackageIds.*")
-    .isInt({ gt: 0 })
-    .withMessage("refereeAllowedPackageIds elements must be positive integers")
-    .toInt(),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("refereeAllowedPackageIds elements must be non-empty strings"),
   validate,
 ];
 
 export const updateReferralProgramValidation = [
   param("id")
-    .isInt({ gt: 0 })
-    .withMessage("Referral program ID must be a positive integer")
-    .toInt(),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Referral program ID must be a non-empty string"),
   body("name")
     .optional()
     .isString()
@@ -228,17 +232,19 @@ export const updateReferralProgramValidation = [
     .isArray()
     .withMessage("referrerTriggerPackageIds must be an array"),
   body("referrerTriggerPackageIds.*")
-    .isInt({ gt: 0 })
-    .withMessage("referrerTriggerPackageIds elements must be positive integers")
-    .toInt(),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("referrerTriggerPackageIds elements must be non-empty strings"),
   body("referrerAllowedPackageIds")
     .optional()
     .isArray()
     .withMessage("referrerAllowedPackageIds must be an array"),
   body("referrerAllowedPackageIds.*")
-    .isInt({ gt: 0 })
-    .withMessage("referrerAllowedPackageIds elements must be positive integers")
-    .toInt(),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("referrerAllowedPackageIds elements must be non-empty strings"),
   body("refereeRewardType")
     .optional({ nullable: true })
     .isIn(["none", "discount", "wallet"])
@@ -261,17 +267,19 @@ export const updateReferralProgramValidation = [
     .isArray()
     .withMessage("refereeAllowedPackageIds must be an array"),
   body("refereeAllowedPackageIds.*")
-    .isInt({ gt: 0 })
-    .withMessage("refereeAllowedPackageIds elements must be positive integers")
-    .toInt(),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("refereeAllowedPackageIds elements must be non-empty strings"),
   validate,
 ];
 
 export const getReferralProgramTracksValidation = [
   param("id")
-    .isInt({ gt: 0 })
-    .withMessage("Referral program ID must be a positive integer")
-    .toInt(),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Referral program ID must be a non-empty string"),
   query("page")
     .optional()
     .isInt({ gt: 0 })
@@ -287,8 +295,9 @@ export const getReferralProgramTracksValidation = [
 
 export const referralProgramIdParamValidation = [
   param("id")
-    .isInt({ gt: 0 })
-    .withMessage("Referral program ID must be a positive integer")
-    .toInt(),
+    .isString()
+    .trim()
+    .notEmpty()
+    .withMessage("Referral program ID must be a non-empty string"),
   validate,
 ];
