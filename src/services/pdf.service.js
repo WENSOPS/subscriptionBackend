@@ -79,8 +79,10 @@ async function loadImage(source) {
  * @param {string}  invoice.invoiceDate             - ISO date string
  * @param {Object}  invoice.customer                - { name, email, address, mobile }
  * @param {Object}  invoice.company                 - { name, email, address, mobile, website, logo, stampImage }
- * @param {Array}   invoice.lineItems               - [{ name, quantity, unitPrice }]
+ * @param {Array}   invoice.lineItems               - [{ name, description?, quantity, unitPrice, currency }]
+ * @param {Array}   [invoice.discounts=[]]          - [{ label, amount }]
  * @param {number}  [invoice.taxRate=0]             - e.g. 0.18 for 18%
+ * @param {number}  [invoice.totalAmount]           - authoritative final total
  * @returns {Promise<Buffer>}
  */
 async function generateInvoicePDF(invoice) {
@@ -90,7 +92,9 @@ async function generateInvoicePDF(invoice) {
     customer,
     company,
     lineItems,
+    discounts = [],
     taxRate = 0,
+    totalAmount,
   } = invoice;
 
   const [logoBuffer, stampBuffer] = await Promise.all([
@@ -112,6 +116,8 @@ async function generateInvoicePDF(invoice) {
     const HDR_BG = "#f5f5f5";
     const ROW_ALT = "#fafafa";
     const ACCENT = "#1e3a5f";
+    const DISCOUNT = "#166534";
+    const DISCOUNT_BG = "#f0fdf4";
     const PW = 595;
     const L = 50;
     const R = 545;
@@ -172,7 +178,7 @@ async function generateInvoicePDF(invoice) {
       .font("Helvetica-Bold")
       .fillColor(MUTED)
       .text("INVOICE DATE", L, META_Y)
-      .text("INVOICE NUMBER", L, META_Y, { width: W, align: "right" });
+      .text("INVOICE NO.", L, META_Y, { width: W, align: "right" });
     doc
       .fontSize(10)
       .font("Helvetica-Bold")
@@ -252,20 +258,38 @@ async function generateInvoicePDF(invoice) {
       const item = lineItems[i];
       const lineTotal = item.quantity * item.unitPrice;
       subtotal += lineTotal;
+      const rowH = item.description ? ROW_H + 12 : ROW_H;
+
       if (i % 2 === 1) {
-        doc.rect(L, ry, W, ROW_H).fill(ROW_ALT);
+        doc.rect(L, ry, W, rowH).fill(ROW_ALT);
       }
       doc
-        .moveTo(L, ry + ROW_H)
-        .lineTo(R, ry + ROW_H)
+        .moveTo(L, ry + rowH)
+        .lineTo(R, ry + rowH)
         .strokeColor(BORDER)
         .lineWidth(0.3)
         .stroke();
       doc
         .fontSize(9.5)
+        .font("Helvetica-Bold")
+        .fillColor(INK)
+        .text(item.name, C0x + 8, ry + 8, { width: C0w - 14, align: "left" });
+
+      if (item.description) {
+        doc
+          .fontSize(7.5)
+          .font("Helvetica")
+          .fillColor(MUTED)
+          .text(item.description, C0x + 8, ry + 22, {
+            width: C0w - 14,
+            align: "left",
+          });
+      }
+
+      doc
+        .fontSize(9.5)
         .font("Helvetica")
         .fillColor(INK)
-        .text(item.name, C0x + 8, ry + 8, { width: C0w - 14, align: "left" })
         .text(String(item.quantity), C1x + 2, ry + 8, {
           width: C1w - 4,
           align: "center",
@@ -278,7 +302,7 @@ async function generateInvoicePDF(invoice) {
           width: W - 10,
           align: "right",
         });
-      ry += ROW_H;
+      ry += rowH;
     }
     doc
       .rect(L, TABLE_Y, W, ry - TABLE_Y)
@@ -294,58 +318,131 @@ async function generateInvoicePDF(invoice) {
         .stroke();
     });
 
-    // Totals
-    const tax = subtotal * taxRate;
-    const total = subtotal + tax;
-    let ty = ry + 16;
-    const TOT_W = 200;
-    const TOT_X = R - TOT_W;
-    if (taxRate > 0) {
+    // Totals summary
+    const currency = lineItems[0]?.currency;
+    const discountTotal = discounts.reduce((sum, d) => sum + d.amount, 0);
+    const taxableAmount = subtotal - discountTotal;
+    const tax = taxRate > 0 ? Math.ceil(taxableAmount * taxRate) : 0;
+    const total =
+      totalAmount != null && !Number.isNaN(Number(totalAmount))
+        ? Number(totalAmount)
+        : taxableAmount + tax;
+
+    const SUMMARY_W = 250;
+    const SUMMARY_X = R - SUMMARY_W;
+    let ty = ry + 22;
+
+    const drawSummaryRow = (label, value, opts = {}) => {
+      const {
+        bold = false,
+        color = SUBINK,
+        valueColor = INK,
+        fontSize = 9.5,
+        rowH = 18,
+      } = opts;
       doc
-        .fontSize(9.5)
-        .font("Helvetica")
-        .fillColor(SUBINK)
-        .text("Subtotal", TOT_X, ty)
-        .text(pdfCurrency(subtotal, lineItems[0]?.currency), L, ty, {
-          width: W - 10,
-          align: "right",
-        });
-      ty += 15;
+        .fontSize(fontSize)
+        .font(bold ? "Helvetica-Bold" : "Helvetica")
+        .fillColor(color)
+        .text(label, SUMMARY_X, ty, { width: SUMMARY_W - 90, align: "left" });
       doc
-        .text("Tax (" + (taxRate * 100).toFixed(0) + "%)", TOT_X, ty)
-        .text(pdfCurrency(tax, lineItems[0]?.currency), L, ty, {
-          width: W - 10,
-          align: "right",
-        });
-      ty += 12;
+        .fillColor(valueColor)
+        .text(value, SUMMARY_X, ty, { width: SUMMARY_W - 8, align: "right" });
+      ty += rowH;
+    };
+
+    drawSummaryRow("Subtotal", pdfCurrency(subtotal, currency));
+
+    if (discounts.length > 0) {
+      ty += 4;
+      const discBlockTop = ty;
+      const discRowH = 16;
+      const discRowCount = discounts.length + (discounts.length > 1 ? 1 : 0);
+
       doc
-        .moveTo(TOT_X, ty)
+        .rect(
+          SUMMARY_X - 8,
+          discBlockTop - 2,
+          SUMMARY_W + 8,
+          discRowCount * discRowH + 8,
+        )
+        .fill(DISCOUNT_BG);
+
+      ty = discBlockTop + 2;
+      discounts.forEach((discount) => {
+        drawSummaryRow(
+          discount.label,
+          `- ${pdfCurrency(discount.amount, currency)}`,
+          { color: DISCOUNT, valueColor: DISCOUNT, fontSize: 9, rowH: discRowH },
+        );
+      });
+
+      if (discounts.length > 1) {
+        drawSummaryRow(
+          "Total Savings",
+          `- ${pdfCurrency(discountTotal, currency)}`,
+          {
+            bold: true,
+            color: DISCOUNT,
+            valueColor: DISCOUNT,
+            fontSize: 9,
+            rowH: discRowH,
+          },
+        );
+      }
+
+      ty += 6;
+      doc
+        .moveTo(SUMMARY_X, ty)
         .lineTo(R, ty)
         .strokeColor(BORDER)
         .lineWidth(0.5)
         .stroke();
       ty += 10;
+
+      drawSummaryRow(
+        "Amount after discount",
+        pdfCurrency(taxableAmount, currency),
+        { bold: true },
+      );
     }
-    doc.rect(TOT_X - 5, ty - 4, TOT_W + 5, 26).fill(HDR_BG);
+
+    if (taxRate > 0) {
+      drawSummaryRow(
+        `GST (${(taxRate * 100).toFixed(0)}%)`,
+        pdfCurrency(tax, currency),
+      );
+    }
+
+    ty += 6;
     doc
-      .moveTo(TOT_X - 5, ty - 4)
-      .lineTo(R, ty - 4)
+      .moveTo(SUMMARY_X - 8, ty)
+      .lineTo(R, ty)
+      .strokeColor(ACCENT)
+      .lineWidth(0.8)
+      .stroke();
+    ty += 8;
+
+    doc.rect(SUMMARY_X - 8, ty - 2, SUMMARY_W + 8, 28).fill(HDR_BG);
+    doc
+      .moveTo(SUMMARY_X - 8, ty - 2)
+      .lineTo(R, ty - 2)
       .strokeColor(BORDER)
       .lineWidth(0.4)
       .stroke();
     doc
-      .moveTo(TOT_X - 5, ty + 22)
-      .lineTo(R, ty + 22)
+      .moveTo(SUMMARY_X - 8, ty + 26)
+      .lineTo(R, ty + 26)
       .strokeColor(BORDER)
       .lineWidth(0.4)
       .stroke();
     doc
-      .fontSize(11)
+      .fontSize(12)
       .font("Helvetica-Bold")
-      .fillColor(INK)
-      .text("Total", TOT_X + 5, ty + 4)
-      .text(pdfCurrency(total, lineItems[0]?.currency), L, ty + 4, {
-        width: W - 10,
+      .fillColor(ACCENT)
+      .text("Total Payable", SUMMARY_X, ty + 7)
+      .text(pdfCurrency(total, currency), SUMMARY_X, ty + 7, {
+        width: SUMMARY_W - 8,
         align: "right",
       });
     ty += 42;

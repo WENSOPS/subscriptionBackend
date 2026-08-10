@@ -1,11 +1,13 @@
 import { prisma } from "../../lib/prisma.js";
-import { processInvoice } from "../../services/invoice.service.js";
-import { sendInvoiceEmail } from "../../services/mail.service.js";
-import { fetchImageBuffer } from "../../services/pdf.service.js";
+import {
+  generateAndSendOrderInvoice,
+  processInvoice,
+  InvoiceServiceError,
+} from "../../services/invoice.service.js";
 import { getInvoiceDownloadUrl } from "../../services/s3.service.js";
-import { generateInvoiceNumber } from "../../utils/invoiceHelpers.js";
 import { generateId } from "../../utils/generateId.js";
-import { ok, notFound, internalError, created } from "../../utils/response.js";
+import { generateInvoiceNumber } from "../../utils/invoiceHelpers.js";
+import { ok, notFound, internalError, created, badRequest } from "../../utils/response.js";
 
 export const createBooking = async (req, res) => {
   try {
@@ -161,11 +163,11 @@ export const webhookUpdate = async (req, res) => {
     ]);
     if (booking.count !== 0 && orderStatus === "SUCCESS") {
       const { invoiceNumber, s3Key } = await processInvoice({
-        id: bookingData.id,
+        invoiceNumber: bookingData.invoiceNumber || generateInvoiceNumber(),
         customer: {
           name: bookingData.user.name,
           email: bookingData.user.email,
-          address: "N/A", // Add address if available
+          address: "N/A",
           mobile: bookingData.user.mobileNumber,
         },
         lineItems: [
@@ -176,11 +178,11 @@ export const webhookUpdate = async (req, res) => {
             currency: bookingData.currency,
           },
         ],
-        taxRate: 0, // Set tax rate if applicable
+        taxRate: 0,
       });
       await prisma.booking.update({
         where: { id: bookingData.id },
-        data: { invoiceKey: s3Key, invoiceNumber: invoiceNumber },
+        data: { invoiceKey: s3Key, invoiceNumber },
       });
     }
     ok(res, booking, "Booking updated successfully via webhook");
@@ -193,81 +195,45 @@ export const webhookUpdate = async (req, res) => {
 export const generateInvoice = async (req, res) => {
   try {
     const { id } = req.params;
-    const booking = await prisma.booking.findUnique({
+    const isUser = req.user.role === "user";
+
+    if (isUser) {
+      const owned = await prisma.order.findFirst({
         where: { id, userId: req.user.userId },
-      select: {
-        packageName: true,
-        purchaseAmount: true,
-        purchaseDate: true,
-        validity: true,
-        invoiceKey: true,
-        invoiceNumber: true,
-        currency: true,
-        user: {
-          select: { name: true, email: true, mobileNumber: true },
-        },
+        select: { id: true },
+      });
+      if (!owned) {
+        return notFound(res, "Order not found");
+      }
+    }
+
+    const result = await generateAndSendOrderInvoice(id);
+    const downloadUrl = await getInvoiceDownloadUrl(result.s3Key, 3600);
+
+    ok(
+      res,
+      {
+        orderId: result.orderId,
+        invoiceNumber: result.invoiceNumber,
+        displayReference: result.displayReference,
+        downloadUrl,
+        cashfreeOrderId: result.cashfreeOrderId,
+        finalAmount: result.finalAmount,
       },
-    });
-
-    if (!booking) {
-      return notFound(res, "Booking not found");
-    }
-
-    if (booking.invoiceKey !== "" && booking.invoiceKey !== null) {
-      const downloadUrl = await getInvoiceDownloadUrl(booking.invoiceKey, 3600);
-      const pdfBuffer = await fetchImageBuffer(downloadUrl); // Reusing image fetch logic for the PDF
-
-      sendInvoiceEmail({
-        toEmail: booking.user.email,
-        toName: booking.user.name,
-        invoiceNumber: booking.invoiceNumber,
-        serviceName: booking.packageName,
-        total: booking.purchaseAmount,
-        pdfBuffer: pdfBuffer,
-        currency: booking.currency,
-      });
-
-      return ok(
-        res,
-        { invoiceNumber: booking.invoiceNumber, downloadUrl },
-        { message: "Invoice already exists. Email sent again." },
-      );
-    } else {
-      const { invoiceNumber, s3Key } = await processInvoice({
-        id: id,
-        customer: {
-          name: booking.user.name,
-          email: booking.user.email,
-          address: "N/A", // Add address if available
-          mobile: booking.user.mobileNumber,
-        },
-        lineItems: [
-          {
-            name: booking.packageName,
-            quantity: 1,
-            unitPrice: booking.purchaseAmount,
-            currency: booking.currency,
-          },
-        ],
-        taxRate: 0, // Set tax rate if applicable
-      });
-
-      await prisma.booking.update({
-        where: { id },
-        data: { invoiceKey: s3Key, invoiceNumber: invoiceNumber },
-      });
-
-      const downloadUrl = await getInvoiceDownloadUrl(s3Key, 3600);
-
-      ok(
-        res,
-        { invoiceNumber, downloadUrl },
-        {
-          message: "Invoice generation initiated. Email will be sent shortly.",
-        },
-      );
-    }
+      "Invoice generated and emailed successfully",
+    );
   } catch (error) {
+    if (error instanceof InvoiceServiceError) {
+      if (error.code === "ORDER_NOT_FOUND") {
+        return notFound(res, "Order not found");
+      }
+      if (error.code === "ORDER_NOT_PAID") {
+        return badRequest(res, error.message);
+      }
+      if (error.code === "NO_CUSTOMER_EMAIL") {
+        return badRequest(res, error.message);
+      }
+    }
     console.error("Error generating invoice:", error);
     internalError(res, "Failed to generate invoice");
   }

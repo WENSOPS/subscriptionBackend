@@ -9,15 +9,12 @@ const BUCKET = process.env.S3_BUCKET;
  * Stored under: invoices/YYYY/MM/INV-XXXXXXXX.pdf
  *
  * @param {Buffer} pdfBuffer
- * @param {string} invoiceNumber  - e.g. "INV-20240615-4821"
+ * @param {string} invoiceNumber - unique invoice reference used as the file name
  * @returns {Promise<string>} s3Key - the stored object key
  */
 async function uploadInvoiceToS3(pdfBuffer, invoiceNumber) {
   const now = new Date();
-  const year = now.getFullYear();
-  const month = String(now.getMonth() + 1).padStart(2, "0");
 
-  // Folder structure: invoices/2024/06/INV-20240615-4821.pdf
   const s3Key = `invoices/${invoiceNumber}.pdf`;
 
   const command = new PutObjectCommand({
@@ -25,8 +22,6 @@ async function uploadInvoiceToS3(pdfBuffer, invoiceNumber) {
     Key: s3Key,
     Body: pdfBuffer,
     ContentType: "application/pdf",
-    // Optional: make it private (recommended)
-    // ACL: "private",
     Metadata: {
       invoiceNumber,
       uploadedAt: now.toISOString(),
@@ -35,7 +30,6 @@ async function uploadInvoiceToS3(pdfBuffer, invoiceNumber) {
 
   await s3Client.send(command);
 
-  console.log(`✅ Uploaded invoice to S3: ${s3Key}`);
   return s3Key;
 }
 

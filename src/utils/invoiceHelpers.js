@@ -1,12 +1,14 @@
 /**
- * Generates a unique invoice number
- * Format: INV-YYYYMMDD-XXXX (e.g. INV-20240615-4821)
+ * Generates a short unique invoice number.
+ * Format: WF-YYMMDD-XXXX (e.g. WF-260810-4821)
  */
 function generateInvoiceNumber() {
-  const date = new Date();
-  const datePart = date.toISOString().slice(0, 10).replace(/-/g, ""); // 20240615
-  const randomPart = Math.floor(1000 + Math.random() * 9000); // 4 digit random
-  return `INV-${datePart}-${randomPart}`;
+  const now = new Date();
+  const yy = String(now.getFullYear()).slice(-2);
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const randomPart = Math.floor(1000 + Math.random() * 9000);
+  return `WF-${yy}${mm}${dd}-${randomPart}`;
 }
 
 /**

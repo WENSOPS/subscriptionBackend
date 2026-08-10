@@ -20,6 +20,7 @@ import {
   sendWhatsAppTemplate,
   sendWhatsAppTemplateToBroadcast,
 } from "../../utils/whatsapp-notification.js";
+import { generateAndSendOrderInvoice } from "../../services/invoice.service.js";
 const CF_BASE_URL = "https://sandbox.cashfree.com"; // sandbox url
 
 export const createOrder = async (req, res) => {
@@ -191,6 +192,7 @@ export const createOrder = async (req, res) => {
           id: generateId.order(),
           userId,
           packageId,
+          packageName: packageData.name,
           amount: packageData.discountedPrice,
           discountAmount,
           finalAmount: orderAmount,
@@ -319,6 +321,12 @@ export const verifyPayment = async (req, res) => {
       } catch (subErr) {
         console.error("[verifyPayment] Error creating subscription or processing referral:", subErr);
       }
+
+      try {
+        await generateAndSendOrderInvoice(order.id, { assignInvoiceNumber: true });
+      } catch (invoiceErr) {
+        console.error("[verifyPayment] Error generating invoice:", invoiceErr);
+      }
     }
   }
 
@@ -418,6 +426,14 @@ export const handleWebhook = async (req, res) => {
           await processReferralOnPayment(existingOrder);
         } catch (subErr) {
           console.error("[webhook] Error creating subscription or processing referral:", subErr);
+        }
+
+        try {
+          await generateAndSendOrderInvoice(existingOrder.id, {
+            assignInvoiceNumber: true,
+          });
+        } catch (invoiceErr) {
+          console.error("[webhook] Error generating invoice:", invoiceErr);
         }
 
       } catch (error) {

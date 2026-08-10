@@ -147,6 +147,7 @@ model Order {
   id                      String    @id @db.VarChar(50)
   userId                  String    @db.VarChar(50)
   packageId               String    @db.VarChar(50)
+  packageName             String
   amount                  Float
   discountAmount          Float
   finalAmount             Float
@@ -157,6 +158,8 @@ model Order {
   currency                String    @default("INR")
   paymentId               String?
   cashfreeOrderId         String?   @unique
+  invoiceNumber           String?       @unique
+  invoiceKey              String?
   appliedReferralCode     String?
   appliedReferralRewardId String?   @db.VarChar(50)
   referralDiscountAmount  Float?

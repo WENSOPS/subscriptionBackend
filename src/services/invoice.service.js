@@ -1,3 +1,4 @@
+import { prisma } from "../lib/prisma.js";
 import { generateInvoicePDF } from "./pdf.service.js";
 import { uploadInvoiceToS3 } from "./s3.service.js";
 import { sendInvoiceEmail } from "./mail.service.js";
@@ -8,72 +9,262 @@ import path from "path";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ASSETS = path.resolve(__dirname, "../../assets");
 
-/**
- * Full invoice pipeline:
- *  1. Build invoice data
- *  2. Generate PDF in memory
- *  3. Upload PDF buffer to S3
- *  4. Get presigned download URL
- *  5. Send email with PDF attached + download link
- *  6. Return s3Key + invoiceNumber to caller (to save in DB)
- *
- * @param {Object} booking
- * @param {string} booking.id
- * @param {Object} booking.customer       - { name, email, address, mobile }
- * @param {Array}  booking.lineItems      - [{ name, quantity, unitPrice }]
- * @param {number} booking.taxRate        - e.g. 0.18
- *
- * @returns {Promise<{ invoiceNumber: string, s3Key: string }>}
- */
-async function processInvoice(booking) {
-  const invoiceNumber = generateInvoiceNumber();
-  const invoiceDate = new Date().toISOString();
+const ORDER_INVOICE_SELECT = {
+  id: true,
+  packageName: true,
+  amount: true,
+  discountAmount: true,
+  finalAmount: true,
+  couponCode: true,
+  referralDiscountAmount: true,
+  currency: true,
+  cashfreeOrderId: true,
+  invoiceNumber: true,
+  invoiceKey: true,
+  status: true,
+  user: {
+    select: { name: true, email: true, mobileNumber: true },
+  },
+  package: {
+    select: { name: true, gst: true },
+  },
+};
 
-  // Calculate total for email summary
-  const subtotal = booking.lineItems.reduce(
+class InvoiceServiceError extends Error {
+  constructor(code, message) {
+    super(message);
+    this.code = code;
+  }
+}
+
+function buildOrderInvoicePayload(order) {
+  const currency = order.currency || "INR";
+  const packageLabel = order.packageName || order.package?.name || "Package";
+  const discountAmount = Number(order.discountAmount) || 0;
+  const referralDiscountAmount = Number(order.referralDiscountAmount) || 0;
+
+  const lineItems = [
+    {
+      name: packageLabel,
+      quantity: 1,
+      unitPrice: order.amount,
+      currency,
+    },
+  ];
+
+  const discounts = [];
+
+  if (discountAmount > 0) {
+    discounts.push({
+      label: order.couponCode
+        ? `Coupon (${order.couponCode})`
+        : "Coupon Discount",
+      amount: discountAmount,
+    });
+  }
+
+  if (referralDiscountAmount > 0) {
+    discounts.push({
+      label: "Referral Reward",
+      amount: referralDiscountAmount,
+    });
+  }
+
+  return { lineItems, discounts };
+}
+
+function getOrderInvoiceTaxRate(order) {
+  const gstRate =
+    order.package?.gst !== null && order.package?.gst !== undefined
+      ? Number(order.package.gst)
+      : 0;
+  return gstRate / 100;
+}
+
+function calculateInvoiceTotal(lineItems, discounts, taxRate, finalAmount) {
+  if (finalAmount != null && !Number.isNaN(Number(finalAmount))) {
+    return Number(finalAmount);
+  }
+
+  const subtotal = lineItems.reduce(
     (sum, item) => sum + item.quantity * item.unitPrice,
     0,
   );
-  const total = subtotal + subtotal * (booking.taxRate ?? 0);
+  const discountTotal = (discounts || []).reduce((sum, d) => sum + d.amount, 0);
+  const taxableAmount = subtotal - discountTotal;
+  const gstAmount = Math.ceil(taxableAmount * taxRate);
+  return taxableAmount + gstAmount;
+}
+
+async function assignUniqueInvoiceNumber(orderId) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const invoiceNumber = generateInvoiceNumber();
+
+    try {
+      const updated = await prisma.order.updateMany({
+        where: { id: orderId, invoiceNumber: null },
+        data: { invoiceNumber },
+      });
+
+      if (updated.count === 1) {
+        return invoiceNumber;
+      }
+
+      const refreshed = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { invoiceNumber: true },
+      });
+
+      if (refreshed?.invoiceNumber) {
+        return refreshed.invoiceNumber;
+      }
+    } catch (error) {
+      if (error.code === "P2002") {
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new InvoiceServiceError(
+    "INVOICE_NUMBER_FAILED",
+    "Failed to generate a unique invoice number",
+  );
+}
+
+function getInvoiceDisplayReference(order) {
+  return order.invoiceNumber || order.cashfreeOrderId || order.id;
+}
+
+/**
+ * Core pipeline: build PDF → upload S3 → email customer.
+ */
+async function processInvoice({
+  invoiceNumber,
+  customer,
+  lineItems,
+  discounts = [],
+  taxRate = 0,
+  totalAmount,
+}) {
+  const invoiceDate = new Date().toISOString();
+  const total = calculateInvoiceTotal(lineItems, discounts, taxRate, totalAmount);
+  const currency = lineItems[0]?.currency ?? "INR";
 
   const invoiceData = {
     invoiceNumber,
     invoiceDate,
-    customer: booking.customer,
+    customer,
     company: {
       name: "WENS FORCE INTERNATIONAL PVT LTD",
-      email: process.env.MAIL_USER,
+      email: process.env.SMTP_USER || process.env.MAIL_USER,
       address: "Empire Building, 2nd Floor, Fort, Mumbai - 400001",
       mobile: "+91 7304607954",
       website: "https://subscription.wensforce.com",
       logo: path.join(ASSETS, "logo.png"),
       stampImage: path.join(ASSETS, "stamp.png"),
     },
-    lineItems: booking.lineItems,
-    taxRate: booking.taxRate ?? 0,
+    lineItems,
+    discounts,
+    taxRate,
+    totalAmount: total,
   };
 
-  // Step 1 — Generate PDF in memory
-  console.log(`⚙️  Generating PDF for ${invoiceNumber}...`);
   const pdfBuffer = await generateInvoicePDF(invoiceData);
-
-  // Step 2 — Upload to S3 (no filesystem)
-  console.log(`☁️  Uploading to S3...`);
   const s3Key = await uploadInvoiceToS3(pdfBuffer, invoiceNumber);
 
-  // Step 3 — Send email
-  console.log(`📧 Sending invoice email to ${booking.customer.email}...`);
   await sendInvoiceEmail({
-    toEmail: booking.customer.email,
-    toName: booking.customer.name,
+    toEmail: customer.email,
+    toName: customer.name || "Customer",
     invoiceNumber,
-    serviceName: booking.lineItems[0]?.name ?? "Service",
+    serviceName: lineItems[0]?.name ?? "Service",
     total,
-    pdfBuffer, // attached directly to the email
-    currency: booking.lineItems[0]?.currency ?? "INR",
+    pdfBuffer,
+    currency,
   });
 
   return { invoiceNumber, s3Key };
 }
 
-export { processInvoice };
+/**
+ * Load a paid order, generate PDF, upload, and email.
+ *
+ * @param {string} orderId - Internal order id
+ * @param {{ assignInvoiceNumber?: boolean }} options
+ *   assignInvoiceNumber — when true (payment flow), generate and store a new
+ *   invoice number if the order does not have one yet. When false (e.g. manual
+ *   resend on legacy orders), leave invoiceNumber null and use order ref in PDF/email.
+ */
+async function generateAndSendOrderInvoice(orderId, { assignInvoiceNumber = false } = {}) {
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: ORDER_INVOICE_SELECT,
+  });
+
+  if (!order) {
+    throw new InvoiceServiceError("ORDER_NOT_FOUND", `Order not found: ${orderId}`);
+  }
+
+  if (order.status !== "PAID") {
+    throw new InvoiceServiceError(
+      "ORDER_NOT_PAID",
+      `Invoice can only be generated for paid orders (current: ${order.status})`,
+    );
+  }
+
+  const customerEmail = order.user?.email?.trim();
+  if (!customerEmail) {
+    throw new InvoiceServiceError(
+      "NO_CUSTOMER_EMAIL",
+      "Customer email is required to send the invoice",
+    );
+  }
+
+  let invoiceNumber = order.invoiceNumber;
+
+  if (!invoiceNumber && assignInvoiceNumber) {
+    invoiceNumber = await assignUniqueInvoiceNumber(order.id);
+  }
+
+  if (!invoiceNumber) {
+    invoiceNumber = getInvoiceDisplayReference(order);
+  }
+
+  const { lineItems, discounts } = buildOrderInvoicePayload(order);
+  const taxRate = getOrderInvoiceTaxRate(order);
+
+  const { s3Key } = await processInvoice({
+    invoiceNumber,
+    customer: {
+      name: order.user.name || "Customer",
+      email: customerEmail,
+      address: "N/A",
+      mobile: order.user.mobileNumber,
+    },
+    lineItems,
+    discounts,
+    taxRate,
+    totalAmount: order.finalAmount,
+  });
+
+  await prisma.order.update({
+    where: { id: order.id },
+    data: { invoiceKey: s3Key },
+  });
+
+  return {
+    orderId: order.id,
+    invoiceNumber: order.invoiceNumber,
+    displayReference: invoiceNumber,
+    s3Key,
+    cashfreeOrderId: order.cashfreeOrderId,
+    finalAmount: order.finalAmount,
+  };
+}
+
+export {
+  processInvoice,
+  generateAndSendOrderInvoice,
+  ORDER_INVOICE_SELECT,
+  InvoiceServiceError,
+};

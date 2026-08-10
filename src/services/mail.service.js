@@ -23,7 +23,7 @@ async function sendInvoiceEmail({
   currency = "INR",
 }) {
   const mailOptions = {
-    from: process.env.MAIL_FROM,
+    from: process.env.MAIL_FROM || process.env.SMTP_USER,
     to: `${toName} <${toEmail}>`,
     subject: `Invoice ${invoiceNumber} – ${serviceName}`,
     html: buildEmailHTML({
@@ -34,7 +34,6 @@ async function sendInvoiceEmail({
       currency,
     }),
 
-    // Attach the PDF directly
     attachments: [
       {
         filename: `${invoiceNumber}.pdf`,
@@ -45,7 +44,6 @@ async function sendInvoiceEmail({
   };
 
   const info = await transporter.sendMail(mailOptions);
-  console.log(`✅ Invoice email sent to ${toEmail} [${info.messageId}]`);
   return info;
 }
 
