@@ -30,13 +30,30 @@ import {
   OTP_EXPIRY,
   RESEND_EXPIRY,
   RESEND_LIMIT,
+  REGISTRATION_EXPIRY,
 } from "../../config/redis/redis.constants.js";
 import {
   OTP_ATTEMPTS_KEY,
   OTP_BLOCKED_KEY,
   OTP_KEY,
   OTP_RESEND_KEY,
+  REGISTRATION_KEY,
 } from "../../config/redis/redis.keys.js";
+
+const createRegistrationToken = (mobileNumber) =>
+  jwt.sign(
+    { mobileNumber, purpose: "registration" },
+    process.env.ACCESS_TOKEN_SECRET,
+    { expiresIn: REGISTRATION_EXPIRY },
+  );
+
+const verifyRegistrationToken = (registrationToken) => {
+  const decoded = jwt.verify(registrationToken, process.env.ACCESS_TOKEN_SECRET);
+  if (decoded.purpose !== "registration" || !decoded.mobileNumber) {
+    throw new Error("Invalid registration token");
+  }
+  return decoded;
+};
 
 const sendOTPHandler = async (mobileNumber, platform) => {
   try {
@@ -132,30 +149,33 @@ export const verifyOtp = async (req, res) => {
       return errorResponse(res, "Invalid or expired OTP", 400);
     }
 
-    await deleteKey(`otp:${mobileNumber}`);
+    await deleteKey(OTP_KEY(mobileNumber));
 
-    // 4. Upsert user — atomic, single DB hit
-    const user = await prisma.user.upsert({
+    const existingUser = await prisma.user.findUnique({
       where: { mobileNumber },
-      update: {},
-      create: { id: generateId.user(), mobileNumber, role: "user" },
     });
 
-    // 5. Detect new user — createdAt and updatedAt are identical on creation
-    const isNewUser = Math.abs(
-      user.createdAt.getTime() - user.updatedAt.getTime()
-    ) < 100; // 100ms threshold to avoid clock rounding issues
+    // New user — OTP verified, but account is not created until terms are accepted
+    if (!existingUser) {
+      await setKey(REGISTRATION_KEY(mobileNumber), "verified", REGISTRATION_EXPIRY);
 
-    // 6. Generate tokens
+      const registrationToken = createRegistrationToken(mobileNumber);
+
+      return created(
+        res,
+        { registrationToken, mobileNumber },
+        "OTP verified. Please accept terms to complete registration.",
+      );
+    }
+
     const { accessToken, refreshToken } =
-      await generateAccessAndRefreshTokens(user);
+      await generateAccessAndRefreshTokens(existingUser);
 
-    // 7. Update refresh tokens
-    const existingTokens = Array.isArray(user.refreshTokens)
-      ? user.refreshTokens
+    const existingTokens = Array.isArray(existingUser.refreshTokens)
+      ? existingUser.refreshTokens
       : [];
     const updatedUser = await prisma.user.update({
-      where: { id: user.id },
+      where: { id: existingUser.id },
       data: {
         refreshTokens: [
           ...existingTokens,
@@ -167,7 +187,6 @@ export const verifyOtp = async (req, res) => {
       },
     });
 
-    // 8. Set cookie
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -177,16 +196,15 @@ export const verifyOtp = async (req, res) => {
 
     updatedUser.refreshTokens = undefined;
 
-    const responseData = {
-      accessToken,
-      refreshToken,
-      user: updatedUser,
-    };
-
-    // 9. 201 for new user, 200 for existing
-    return isNewUser
-      ? created(res, responseData, "Account created successfully")
-      : ok(res, responseData, "OTP verified successfully");
+    return ok(
+      res,
+      {
+        accessToken,
+        refreshToken,
+        user: updatedUser,
+      },
+      "OTP verified successfully",
+    );
 
   } catch (error) {
     console.error("Error in verifyOtp:", error);
@@ -326,6 +344,88 @@ export const getCurrentUser = async (req, res) => {
   } catch (error) {
     console.error("Error in getCurrentUser:", error);
     return internalError(res, "Failed to fetch user profile");
+  }
+};
+
+export const acceptTerms = async (req, res) => {
+  try {
+    const { registrationToken } = req.body;
+
+    if (!registrationToken || typeof registrationToken !== "string") {
+      return errorResponse(res, "Registration token is required", 400);
+    }
+
+    let decoded;
+    try {
+      decoded = verifyRegistrationToken(registrationToken);
+    } catch {
+      return errorResponse(res, "Invalid or expired registration token", 401);
+    }
+
+    const { mobileNumber } = decoded;
+
+    const registrationPending = await getKey(REGISTRATION_KEY(mobileNumber));
+    if (!registrationPending) {
+      return errorResponse(
+        res,
+        "Registration session expired. Please verify OTP again.",
+        400,
+      );
+    }
+
+    const existingUser = await prisma.user.findUnique({
+      where: { mobileNumber },
+    });
+
+    if (existingUser) {
+      await deleteKey(REGISTRATION_KEY(mobileNumber));
+      return errorResponse(res, "Account already exists. Please login.", 400);
+    }
+
+    const user = await prisma.user.create({
+      data: {
+        id: generateId.user(),
+        mobileNumber,
+        role: "user",
+        termsAccepted: true,
+        termsAcceptedAt: new Date(),
+      },
+    });
+
+    await deleteKey(REGISTRATION_KEY(mobileNumber));
+
+    const { accessToken, refreshToken } =
+      await generateAccessAndRefreshTokens(user);
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        refreshTokens: [
+          {
+            token: refreshToken,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        ],
+      },
+    });
+
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      maxAge: 30 * 24 * 60 * 60 * 1000,
+    });
+
+    user.refreshTokens = undefined;
+
+    return created(
+      res,
+      { accessToken, user },
+      "Account created successfully",
+    );
+  } catch (error) {
+    console.error("Error in acceptTerms:", error);
+    return internalError(res, "Failed to accept terms");
   }
 };
 

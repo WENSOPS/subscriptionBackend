@@ -20,7 +20,8 @@ model User {
   role                Role             @default(user)
   city                String?
   refreshTokens       Json?            // Store refresh tokens as a JSON array
-
+  termsAccepted       Boolean          @default(false)
+  termsAcceptedAt     DateTime?
   referredByUserId    String?          @db.VarChar(50)
   referredByUser      User?            @relation("UserReferrals", fields: [referredByUserId], references: [id], onDelete: SetNull)
   referredUsers       User[]           @relation("UserReferrals")

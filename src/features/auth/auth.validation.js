@@ -88,3 +88,14 @@ export const updateProfileValidationRules = () => {
     validate,
   ];
 };
+
+export const acceptTermsValidationRules = () => {
+  return [
+    body("registrationToken")
+      .notEmpty()
+      .withMessage("Registration token is required")
+      .isString()
+      .withMessage("Registration token must be a string"),
+    validate,
+  ];
+};

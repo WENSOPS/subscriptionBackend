@@ -49,4 +49,10 @@ router.put(
   authController.updateUserProfile,
 );
 
+router.post(
+  "/accept-terms",
+  authValidation.acceptTermsValidationRules(),
+  authController.acceptTerms,
+);
+
 export default router;

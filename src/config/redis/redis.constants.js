@@ -6,3 +6,4 @@ export const MAX_ATTEMPTS     = 5;         // wrong OTP attempts before block
 export const BLOCK_DURATION   = 30 * 60;  // blocked for 30 minutes
 export const RESEND_LIMIT     = 50;         // max resend requests
 export const RESEND_EXPIRY    = 60 * 60;  // resend count resets in 1 hour
+export const REGISTRATION_EXPIRY = 30 * 60; // pending registration after OTP verify
