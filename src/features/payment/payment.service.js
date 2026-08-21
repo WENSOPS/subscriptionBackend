@@ -11,15 +11,21 @@ export const createCashfreeOrder = async (
   packageId,
   customer,
 ) => {
+  const customerDetails = {
+    customer_id: String(customer.id),
+    customer_name: customer.name || "test",
+    customer_phone: customer.phone,
+  };
+
+  if (customer.email) {
+    customerDetails.customer_email = customer.email;
+  }
+
   const orderRequest = {
     order_id: orderId,
-    order_amount: orderAmount, // ← just pass the number directly
+    order_amount: orderAmount,
     order_currency: currency,
-    customer_details: {
-      customer_id: String(customer.id),
-      customer_name: customer.name || "test",
-      customer_phone: customer.phone,
-    },
+    customer_details: customerDetails,
     order_meta: {
       return_url: `${process.env.RETURN_URL}?order_id=${orderId}`,
     },

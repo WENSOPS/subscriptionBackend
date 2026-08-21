@@ -21,10 +21,17 @@ import {
   sendWhatsAppTemplateToBroadcast,
 } from "../../utils/whatsapp-notification.js";
 import { generateAndSendOrderInvoice } from "../../services/invoice.service.js";
+import { getExchangeRate, getExchangeRates, isSupportedCurrency } from "../../services/exchangeRate.service.js";
+import {
+  convertINRToForeign,
+  minChargeAmount,
+} from "../../utils/currency.js";
 const CF_BASE_URL = "https://sandbox.cashfree.com"; // sandbox url
 
 export const createOrder = async (req, res) => {
-  const { packageId, couponCode, referralRewardId } = req.body;
+  const { packageId, couponCode, referralRewardId, currency: reqCurrency } =
+    req.body;
+  const chargeCurrency = (reqCurrency || "INR").toUpperCase();
   const userId = req.user.userId;
 
   // ── Input validation ──────────────────────────────────────────
@@ -34,6 +41,17 @@ export const createOrder = async (req, res) => {
 
   if (referralRewardId && typeof referralRewardId !== "string") {
     return badRequest(res, "Invalid referralRewardId");
+  }
+
+  try {
+    if (chargeCurrency !== "INR") {
+      const supported = await isSupportedCurrency(chargeCurrency);
+      if (!supported) {
+        return badRequest(res, `Unsupported currency: ${chargeCurrency}`);
+      }
+    }
+  } catch (err) {
+    return badRequest(res, err.message || "Exchange rates unavailable");
   }
 
   try {
@@ -161,25 +179,36 @@ export const createOrder = async (req, res) => {
       referralDiscountAmount = Math.min(referralDiscountAmount, packageData.discountedPrice - discountAmount);
     }
 
-    // ── Calculate final amount (never go below ₹1) ────────────────
-    const baseAmount = packageData.discountedPrice - discountAmount - referralDiscountAmount;
+    // ── Calculate final INR amount from DB price + GST (never below ₹1) ─
+    const baseAmount =
+      packageData.discountedPrice - discountAmount - referralDiscountAmount;
     const { gstAmount } = calculateGST(packageData.gst, baseAmount);
-    const orderAmount = Math.max(
-      1,
-      baseAmount + gstAmount,
-    );
+    const orderAmountINR = Math.max(1, baseAmount + gstAmount);
+
+    // ── Convert to payment currency via Redis-cached ExchangeRate-API rates ─
+    let chargeAmount = orderAmountINR;
+    if (chargeCurrency !== "INR") {
+      const rate = await getExchangeRate(chargeCurrency);
+      chargeAmount = convertINRToForeign(
+        orderAmountINR,
+        chargeCurrency,
+        rate,
+      );
+      chargeAmount = Math.max(minChargeAmount(chargeCurrency), chargeAmount);
+    }
 
     const orderId = `WENS_${packageId}_${Date.now()}`;
     // ── Create Cashfree order ─────────────────────────────────────
     const cashfreeResponse = await createCashfreeOrder(
       orderId,
-      orderAmount,
-      "INR",
+      chargeAmount,
+      chargeCurrency,
       packageId,
       {
         id: userId,
         name: req.user.name || "",
         phone: req.user.mobileNumber || "",
+        email: req.user.email || "",
       },
     );
 
@@ -195,7 +224,8 @@ export const createOrder = async (req, res) => {
           packageName: packageData.name,
           amount: packageData.discountedPrice,
           discountAmount,
-          finalAmount: orderAmount,
+          finalAmount: chargeAmount,
+          currency: chargeCurrency,
           couponCode: couponCode || null,
           appliedReferralRewardId: referralRewardId || null,
           referralDiscountAmount: referralDiscountAmount || null,
@@ -223,7 +253,9 @@ export const createOrder = async (req, res) => {
       res,
       {
         orderId: order.id,
-        amount: orderAmount,
+        cashfreeOrderId: cashfreeResponse.orderId,
+        amount: chargeAmount,
+        currency: chargeCurrency,
         discountAmount,
         referralDiscountAmount,
         paymentSessionId: cashfreeResponse.paymentSessionId,
@@ -231,8 +263,13 @@ export const createOrder = async (req, res) => {
       "Order created successfully",
     );
   } catch (error) {
-    // Surface coupon-specific errors as 400, everything else as 500
     if (error.isCouponError) {
+      return badRequest(res, error.message);
+    }
+    if (
+      error.message?.includes("Exchange rate unavailable") ||
+      error.message?.includes("ExchangeRate-API")
+    ) {
       return badRequest(res, error.message);
     }
     console.error("[createOrder] Unexpected error:", error);
@@ -251,7 +288,9 @@ export const verifyPayment = async (req, res) => {
       status: true,
       amount: true,
       finalAmount: true,
+      currency: true,
       packageId: true,
+      packageName: true,
       userId: true,
       appliedReferralRewardId: true,
       referralDiscountAmount: true,
@@ -272,7 +311,9 @@ export const verifyPayment = async (req, res) => {
       orderId: order.id,
       status: order.status,
       amount: order.finalAmount,
+      currency: order.currency || "INR",
       packageId: order.packageId,
+      packageName: order.packageName,
     });
   }
 
@@ -334,7 +375,9 @@ export const verifyPayment = async (req, res) => {
     orderId: order.id,
     status: order.status,
     amount: order.finalAmount,
+    currency: order.currency || "INR",
     packageId: order.packageId,
+    packageName: order.packageName,
   });
 };
 
@@ -598,6 +641,24 @@ export const getPaymentById = async (req, res) => {
   } catch (err) {
     console.error("[getPaymentById] Error:", err);
     return internalError(res, "Failed to fetch payment");
+  }
+};
+
+/** Public — returns ExchangeRate-API rates from Redis (single currency or full map). */
+export const getExchangeRateHandler = async (req, res) => {
+  const currency = (req.query.currency || "").toUpperCase();
+
+  try {
+    if (currency) {
+      const rate = await getExchangeRate(currency);
+      return ok(res, { currency, rate, source: "exchangerate-api" });
+    }
+
+    const data = await getExchangeRates();
+    return ok(res, data);
+  } catch (err) {
+    console.error("[getExchangeRateHandler] Error:", err.message);
+    return badRequest(res, err.message || "Failed to fetch exchange rates");
   }
 };
 

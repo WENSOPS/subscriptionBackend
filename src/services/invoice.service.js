@@ -47,14 +47,14 @@ function buildOrderInvoicePayload(order) {
     {
       name: packageLabel,
       quantity: 1,
-      unitPrice: order.amount,
+      unitPrice: currency === "INR" ? order.amount : order.finalAmount,
       currency,
     },
   ];
 
   const discounts = [];
 
-  if (discountAmount > 0) {
+  if (currency === "INR" && discountAmount > 0) {
     discounts.push({
       label: order.couponCode
         ? `Coupon (${order.couponCode})`
@@ -63,7 +63,7 @@ function buildOrderInvoicePayload(order) {
     });
   }
 
-  if (referralDiscountAmount > 0) {
+  if (currency === "INR" && referralDiscountAmount > 0) {
     discounts.push({
       label: "Referral Reward",
       amount: referralDiscountAmount,

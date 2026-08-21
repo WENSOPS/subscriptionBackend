@@ -1,4 +1,5 @@
 import { body, param, validationResult } from "express-validator";
+import { TRIP_TYPES, normalizeTripType } from "./trip.constants.js";
 
 const validate = (req, res, next) => {
   const errors = validationResult(req);
@@ -7,8 +8,6 @@ const validate = (req, res, next) => {
   }
   next();
 };
-
-const TRIP_TYPES = ["airport-transfer", "8Hr/80Km", "Full day"];
 
 export const createTripValidation = [
   body("assignmentId").isString().withMessage("Assignment ID must be a string"),
@@ -23,6 +22,7 @@ export const createTripValidation = [
   body("dropLocation").isString().withMessage("Drop location must be a string"),
   body("tripDate").isISO8601().withMessage("Trip date must be a valid date"),
   body("tripType")
+    .customSanitizer(normalizeTripType)
     .isIn(TRIP_TYPES)
     .withMessage(
       "Trip type must be one of: airport-transfer, 8Hr/80Km, Full day",
@@ -55,6 +55,7 @@ export const requestTripValidation = [
   body("dropLocation").isString().withMessage("Drop location must be a string"),
   body("tripDate").isISO8601().withMessage("Trip date must be a valid date"),
   body("tripType")
+    .customSanitizer(normalizeTripType)
     .isIn(TRIP_TYPES)
     .withMessage(
       "Trip type must be one of: airport-transfer, 8Hr/80Km, Full day",
@@ -106,6 +107,7 @@ export const updateTripValidation = [
     .withMessage("Trip date must be a valid date"),
   body("tripType")
     .optional()
+    .customSanitizer(normalizeTripType)
     .isIn(TRIP_TYPES)
     .withMessage(
       "Trip type must be one of: airport-transfer, 8Hr/80Km, Full day",

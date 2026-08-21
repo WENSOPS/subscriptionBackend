@@ -29,6 +29,13 @@ export const createPaymentValidation = [
     .trim()
     .notEmpty()
     .withMessage("referralRewardId must be a non-empty string"),
+  body("currency")
+    .optional({ nullable: true })
+    .isString()
+    .trim()
+    .toUpperCase()
+    .isLength({ min: 3, max: 3 })
+    .withMessage("currency must be a 3-letter ISO code"),
   validate,
 ];
 

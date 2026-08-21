@@ -22,6 +22,7 @@ router.post(
   paymentValidation.handleWebhookValidation,
   paymentController.handleWebhook,
 );
+router.get("/exchange-rate", paymentController.getExchangeRateHandler);
 router.get(
   "/",
   authMiddleware(["admin", "ops"]),

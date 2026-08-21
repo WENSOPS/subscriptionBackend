@@ -4,6 +4,7 @@ import {
   checkSubscriptionAvailabilityForTrip,
   deductSubscriptionUsageForTrip,
 } from "./trip.service.js";
+import { normalizeTripType } from "./trip.constants.js";
 import {
   accepted,
   ok,
@@ -66,7 +67,7 @@ export const requestTrip = async (req, res) => {
         pickupLocation,
         dropLocation,
         tripDate: new Date(tripDate),
-        tripType,
+        tripType: normalizeTripType(tripType),
         userId: req.user.userId,
         additionalAmount: additionalAmount !== undefined ? additionalAmount : 0,
         services: services.map((service) => ({
@@ -193,7 +194,7 @@ export const createTrip = async (req, res) => {
         pickupLocation,
         dropLocation,
         tripDate: new Date(tripDate),
-        tripType,
+        tripType: normalizeTripType(tripType),
         status: "confirmed", // Admin-created trips are confirmed by default
         createdBy: req.user.userId,
         userId,
@@ -440,7 +441,7 @@ export const updateTrip = async (req, res) => {
         pickupLocation,
         dropLocation,
         tripDate: new Date(tripDate),
-        tripType,
+        tripType: normalizeTripType(tripType),
         additionalAmount:
           additionalAmount !== undefined ? additionalAmount : undefined,
         services: combinedServices.map((service) => ({
