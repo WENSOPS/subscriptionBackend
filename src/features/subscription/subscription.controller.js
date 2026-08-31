@@ -29,7 +29,8 @@ export const getMySubscription = async (req, res) => {
     });
 
     if (!subscriptions.length) {
-      return notFound(res, "No active subscription found");
+      // show empty array instead of not found
+      return ok(res, []);
     }
 
     for (const subscription of subscriptions) {

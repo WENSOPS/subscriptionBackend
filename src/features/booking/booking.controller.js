@@ -18,6 +18,18 @@ export const createBooking = async (req, res) => {
       serviceCity,
       cashfreeId,
     } = req.body;
+
+    console.log("Creating booking with data:", {
+      packageId,
+      packageName,
+      purchaseDate,
+      validity,
+      purchaseAmount,
+      currency,
+      serviceCity,
+      cashfreeId,
+    });
+    
     const booking = await prisma.booking.create({
       data: {
         userId: req.user.userId,

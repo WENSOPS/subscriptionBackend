@@ -15,11 +15,11 @@ import {
   sendWhatsAppTemplateToBroadcast,
 } from "../../utils/whatsapp-notification.js";
 const CF_BASE_URL = "https://sandbox.cashfree.com"; // sandbox url
+import { handlePaymentSuccess, handlePaymentFailed } from "./payment.service.js";
 
 export const createOrder = async (req, res) => {
   const { packageId, couponCode } = req.body;
   const userId = req.user.userId;
-  console.log(req.user);
 
   // ── Input validation ──────────────────────────────────────────
   const parsedPackageId = parseInt(packageId, 10);
@@ -127,67 +127,59 @@ export const createOrder = async (req, res) => {
 };
 
 export const handleWebhook = async (req, res) => {
+  const signature  = req.headers["x-webhook-signature"];
+  const timestamp  = req.headers["x-webhook-timestamp"];
+  const idempotencyKey = req.headers["x-webhook-idempotency"];   // NEW (2025-01-01 webhook version)
+
+  // ── 1. Signature verification ────────────────────────────────────────────
+  // rawBody MUST be the raw bytes/string, never re-serialised JSON.
+  // Ensure server.js captures req.rawBody before express.json() runs.
+  const rawBody = req.rawBody?.toString("utf8") ?? JSON.stringify(req.body);
+
   try {
-    const signature = req.headers["x-webhook-signature"];
-    const timestamp = req.headers["x-webhook-timestamp"];
-
-    // Cashfree needs the raw body string for signature verification
-    // Make sure this route uses express.raw(), not express.json()
-    const rawBody = req.body.toString("utf8");
-
-    const isValid = cashfree.PGVerifyWebhookSignature(
-      signature,
-      rawBody,
-      timestamp,
-    );
-    if (!isValid) {
-      return badRequest(res, "Invalid signature");
-    }
-
-    const event = JSON.parse(rawBody);
-
-    if (event.type === "PAYMENT_SUCCESS_WEBHOOK") {
-      const cashfreeOrderId = event.data.order.order_id; // this is your DB order id
-
-      try {
-        // Update order directly, will throw if not found
-        const updatedOrder = await prisma.order.update({
-          where: { cashfreeOrderId: cashfreeOrderId },
-          data: { status: "PAID", paidAt: new Date() },
-        });
-
-        // create the subscription here instant
-        const subscription = await createSubscription(
-          updatedOrder.userId,
-          updatedOrder.packageId,
-          new Date(),
-          new Date(new Date().setMonth(new Date().getMonth() + 1)), // TODO: calculate endDate based on package duration
-          updatedOrder.amount,
-          updatedOrder.couponCode,
-          updatedOrder.couponId,
-          updatedOrder.paymentId,
-        );
-      } catch (error) {
-        if (error.code === "P2025") {
-          return notFound(res, "Order not found");
-        }
-        throw error;
-      }
-    }
-
-    if (event.type === "PAYMENT_FAILED_WEBHOOK") {
-      const cashfreeOrderId = event.data.order.order_id;
-      await prisma.order.update({
-        where: { cashfreeOrderId: cashfreeOrderId },
-        data: { status: "FAILED" },
-      });
-    }
-
-    return ok(res, { success: true }); // always 200, or Cashfree retries
-  } catch (err) {
-    console.error("[webhook] Error:", err);
-    return internalError(res, "Failed to process webhook");
+    cashfree.PGVerifyWebhookSignature(signature, rawBody, timestamp);
+  } catch {
+    console.error("[webhook] Invalid signature:", signature);
+    return badRequest(res, "Invalid webhook signature");
   }
+
+  // ── 2. Idempotency guard (Cashfree uses at-least-once delivery) ──────────
+  // Skip if this key was already processed. Implement with Redis/DB as needed.
+  if (idempotencyKey) {
+    const alreadyProcessed = await checkIdempotencyKey(idempotencyKey); // implement this
+    if (alreadyProcessed) {
+      console.info("[webhook] Duplicate event, skipping:", idempotencyKey);
+      return ok(res, { success: true });
+    }
+    await markIdempotencyKey(idempotencyKey); // implement this
+  }
+
+  // ── 3. Parse and route events ────────────────────────────────────────────
+  // Always return 200 after sig check passes. Anything else causes Cashfree
+  // to retry the webhook repeatedly.
+  const event = JSON.parse(rawBody);
+
+  try {
+    if (event.type === "PAYMENT_SUCCESS_WEBHOOK") {
+      await handlePaymentSuccess(event);
+
+    } else if (event.type === "PAYMENT_FAILED_WEBHOOK") {
+      await handlePaymentFailed(event);
+
+    } else if (event.type === "PAYMENT_USER_DROPPED_WEBHOOK") {
+      // User abandoned checkout — treat same as failed
+      await handlePaymentFailed(event);
+
+    } else {
+      console.info("[webhook] Unhandled event type:", event.type);
+    }
+  } catch (err) {
+    // Log but still return 200 — a 500 triggers Cashfree retries unnecessarily.
+    // Handle true unrecoverable errors (e.g. poison-pill events) out-of-band.
+    console.error("[webhook] Processing error for event type", event.type, err);
+  }
+
+  return ok(res, { success: true });
 };
 
 export const verifyPayment = async (req, res) => {
@@ -199,17 +191,17 @@ export const verifyPayment = async (req, res) => {
     where: { cashfreeOrderId: orderId },
     select: { id: true, status: true, amount: true, packageId: true },
   });
-  console.log(order)
-  if (!order) return notFound(res, "Order not found");
+ 
+  if (!order) return ok(res, { orderId, status: "NOT_FOUND" });
 
   if (order.status === "PENDING") {
     const cfResponse = await cashfree.PGFetchOrder(orderId);
     const cfStatus = cfResponse.data.order_status;
-    console.log(cfResponse)
     if (cfStatus === "PAID") {
       await prisma.order.update({
         where: { cashfreeOrderId: orderId },
-        data: { status: "PAID", paidAt: new Date() },
+        // data: { status: "PAID", paidAt: new Date() },
+        data: { status: "PAID" }, // FIX: don't set paidAt here, let webhook handle it
       });
       order.status = "PAID";
     }
@@ -254,6 +246,7 @@ export const getAllPayments = async (req, res) => {
   try {
     const [payments, totalCount] = await prisma.$transaction([
       prisma.order.findMany({
+        orderBy: { createdAt: "desc" },
         where: {
           OR: [
             {

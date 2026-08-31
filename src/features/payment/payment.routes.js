@@ -1,4 +1,4 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import authMiddleware from "../../middleware/auth.middlewares.js";
 import { validateCoupon } from "../coupon/coupon.controller.js";
 import * as paymentController from "./payment.controller.js";
@@ -17,7 +17,7 @@ router.get(
   paymentValidation.verifyPaymentValidation,
   paymentController.verifyPayment,
 );
-router.post("/webhook", paymentController.handleWebhook); // No auth, Cashfree calls this
+router.post("/webhook", express.raw({ type: "*/*" }), paymentController.handleWebhook); // No auth, Cashfree calls this
 router.get(
   "/",
   authMiddleware(["admin", "ops"]),
