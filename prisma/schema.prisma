@@ -97,6 +97,7 @@ model Package {
   updatedAt DateTime @updatedAt
 
   @@map("packages")
+  expos Expo[]
 }
 
 model PackageMedia {
@@ -466,4 +467,58 @@ model ReferralReward {
   updatedAt          DateTime     @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+enum ExpoStatus {
+  upcoming
+  ongoing
+  completed
+  cancelled
+}
+
+model Expo {
+  id           String     @id @db.VarChar(50)
+  slug         String     @unique
+  name         String
+  shortName    String?
+  city         String
+  venue        String
+
+  eventStart   DateTime
+  eventEnd     DateTime
+  serviceStart DateTime
+  serviceEnd   DateTime
+
+  status       ExpoStatus @default(upcoming)
+  featured     Boolean    @default(false)
+
+  heroImages   Json?      // string[]
+  cardImage    String?
+  bannerImage  String?
+  eventImages  Json?      // string[]
+  eventVideos  Json?      // string[] — event gallery only
+
+  // ── airport (flattened) ──────────────────────
+  airportCode       String?
+  airportName       String?
+  airportDistance   Float?   // kilometers
+  airportTravelTime Float?   // hours
+
+  // ── coverage (flattened) ─────────────────────
+  pickupPoints Json?      // string[]
+  dropLocation String?
+  serviceArea  String?
+  amenities    Json?      // string[]
+
+  faqOverrides   Json?    // array of { question, answer } overrides
+  testimonialIds Json?    // string[] — switch to a relation once you have a Testimonial model
+
+  packages Package[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([city])
+  @@index([status])
+  @@map("expos")
 }

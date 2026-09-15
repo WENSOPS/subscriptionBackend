@@ -13,6 +13,7 @@ import bookingRoutes from "./features/booking/booking.routes.js";
 import offerRoutes from "./features/Offer/offer.routes.js";
 import adminRoutes from "./features/admin/admin.routes.js";
 import referralRoutes from "./features/referral/referral.route.js";
+import expoRoutes from "./features/expo/expo.routes.js";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 
@@ -56,7 +57,7 @@ app.use("/api/v1/booking", bookingRoutes);
 app.use("/api/v1/offer", offerRoutes);
 app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/referral", referralRoutes);
-
+app.use("/api/v1/expo", expoRoutes);
 app.get("/api/v1/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
