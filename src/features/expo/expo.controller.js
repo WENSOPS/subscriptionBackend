@@ -47,6 +47,20 @@ export async function getExpoBySlug(req, res) {
   }
 }
 
+export async function getPublicExpoById(req, res) {
+  try {
+    const { id } = req.params;
+    const expo = await expoService.getPublicExpoById(id);
+    if (!expo) {
+      return notFound(res, "Expo not found");
+    }
+    return ok(res, expo, "Expo fetched successfully");
+  } catch (error) {
+    console.error("Error fetching expo:", error);
+    return internalError(res, "Failed to fetch expo");
+  }
+}
+
 export async function listAdminExpos(req, res) {
   try {
     const page = parseInt(req.query.page, 10) || 1;

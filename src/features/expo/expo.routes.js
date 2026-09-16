@@ -14,6 +14,11 @@ router.get(
   "/by-slug/:slug",
   expoController.getExpoBySlug,
 );
+router.get(
+  "/by-id/:id",
+  expoIdValidationRules(),
+  expoController.getPublicExpoById,
+);
 
 router.get(
   "/admin/list",

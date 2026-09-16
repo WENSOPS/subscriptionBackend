@@ -315,9 +315,9 @@ export async function listPublicExpos() {
     .map((row) => serializeExpoForClient(row));
 }
 
-export async function getExpoBySlug(slug) {
+async function getPublicExpoDetail(where) {
   const expo = await prisma.expo.findUnique({
-    where: { slug },
+    where,
     include: expoInclude,
   });
   if (!expo || expo.status === "cancelled") return null;
@@ -329,6 +329,14 @@ export async function getExpoBySlug(slug) {
   });
   serialized.packages = withPackages.packages;
   return serialized;
+}
+
+export async function getExpoBySlug(slug) {
+  return getPublicExpoDetail({ slug });
+}
+
+export async function getPublicExpoById(id) {
+  return getPublicExpoDetail({ id });
 }
 
 export async function listAdminExpos({ page = 1, limit = 10, search = "" }) {
