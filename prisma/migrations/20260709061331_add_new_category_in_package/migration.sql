@@ -5,12 +5,6 @@
 
 */
 -- DropForeignKey
-ALTER TABLE `_packageservices` DROP FOREIGN KEY `_PackageServices_A_fkey`;
-
--- DropForeignKey
-ALTER TABLE `_packageservices` DROP FOREIGN KEY `_PackageServices_B_fkey`;
-
--- DropForeignKey
 ALTER TABLE `bookings` DROP FOREIGN KEY `Booking_userId_fkey`;
 
 -- DropForeignKey
@@ -39,9 +33,6 @@ ALTER TABLE `trips` DROP FOREIGN KEY `Trip_userId_fkey`;
 
 -- AlterTable
 ALTER TABLE `subscriptions` ADD COLUMN `category` VARCHAR(191) NULL;
-
--- DropTable
-DROP TABLE `_packageservices`;
 
 -- AddForeignKey
 ALTER TABLE `package_services` ADD CONSTRAINT `package_services_packageId_fkey` FOREIGN KEY (`packageId`) REFERENCES `packages`(`id`) ON DELETE CASCADE ON UPDATE CASCADE;
