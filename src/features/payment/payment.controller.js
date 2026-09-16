@@ -299,7 +299,7 @@ export const verifyPayment = async (req, res) => {
       }
     },
   });
-
+  const paymentId=order.id
   if (!order) {
     return notFound(res, "Order not found");
   }
@@ -347,7 +347,7 @@ export const verifyPayment = async (req, res) => {
       sendWhatsAppTemplateToBroadcast(
         "Testing Office",
         "payment_confirmed_team",
-        [orderId, customerName, order.finalAmount, formattedDate],
+        [orderId, customerName, order.finalAmount, formattedDate,paymentId],
         phone,
       );
 
