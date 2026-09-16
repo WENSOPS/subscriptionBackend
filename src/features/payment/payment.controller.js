@@ -299,7 +299,7 @@ export const verifyPayment = async (req, res) => {
       }
     },
   });
-  const paymentId=order.id
+  
   if (!order) {
     return notFound(res, "Order not found");
   }
@@ -343,6 +343,7 @@ export const verifyPayment = async (req, res) => {
         templateName: "payment_confirmed_client",
         templateParams: [customerName, orderId, order.finalAmount, formattedDate],
       });
+      const paymentId=order.id
 
       sendWhatsAppTemplateToBroadcast(
         "Testing Office",
@@ -451,11 +452,11 @@ export const handleWebhook = async (req, res) => {
           templateName: "payment_confirmed_client",
           templateParams: [customerName, cashfreeOrderId, existingOrder.finalAmount, formattedDate],
         });
-
+        const paymentId=existingOrder.id
         sendWhatsAppTemplateToBroadcast(
           "Testing Office",
           "payment_confirmed_team",
-          [cashfreeOrderId, customerName, existingOrder.finalAmount, formattedDate],
+          [cashfreeOrderId, customerName, existingOrder.finalAmount, formattedDate,paymentId],
           phone,
         );
 
