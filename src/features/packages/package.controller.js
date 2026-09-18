@@ -77,7 +77,12 @@ export const getAllPackages = async (req, res) => {
     const { page = 1, limit = 10, category, search } = req.query;
     const where = {
       ...(category && { category }),
-      ...(search && { name: { contains: search } }),
+      ...(search && {
+        OR: [
+          { name: { contains: search } },
+          { id: { contains: search } },
+        ],
+      }),
     };
 
     const [total, packages] = await Promise.all([

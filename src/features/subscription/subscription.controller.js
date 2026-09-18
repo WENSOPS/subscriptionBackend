@@ -156,6 +156,25 @@ export const getSubscriptionById = async (req, res) => {
 export const getAllSubscriptions = async (req, res) => {
   try {
     const { page = 1, limit = 10, search = "" } = req.query;
+    const listWhere = {
+      OR: [
+        {
+          user: {
+            name: {
+              contains: search,
+            },
+          },
+        },
+        {
+          package: {
+            name: {
+              contains: search,
+            },
+          },
+        },
+      ],
+    };
+
     const [subscriptions, totalCount] = await Promise.all([
       prisma.subscription.findMany({
         select: {
@@ -183,48 +202,14 @@ export const getAllSubscriptions = async (req, res) => {
             },
           },
         },
-        where: {
-          OR: [
-            {
-              user: {
-                name: {
-                  contains: search,
-                },
-              },
-            },
-            {
-              package: {
-                name: {
-                  contains: search,
-                },
-              },
-            },
-          ],
-        },
+        where: listWhere,
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,
         take: parseInt(limit),
       }),
 
       prisma.subscription.count({
-        where: {
-          OR: [
-            {
-              user: {
-                name: {
-                  contains: search,
-                },
-              },
-            },
-            {
-              package: {
-                name: {
-                  contains: search,
-                },
-              },
-            },
-          ],
-        },
+        where: listWhere,
       }),
     ]);
 
