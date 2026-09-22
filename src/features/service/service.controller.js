@@ -37,6 +37,7 @@ export const listServices = async (req, res) => {
     const where = {};
     if (search) {
       where.OR = [
+        { id: { contains: search } },
         { title: { contains: search } },
         { description: { contains: search } },
       ];
@@ -192,6 +193,7 @@ export const servicesNotIncluded = async (req, res) => {
       },
       ...(search && {
         OR: [
+          { id: { contains: search } },
           { title: { contains: search } },
           { description: { contains: search } },
         ],
