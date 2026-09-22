@@ -114,11 +114,10 @@ model PackageMedia {
 }
 
 model PackageService {
-  id          String  @id @db.VarChar(50)
-  packageId   String  @db.VarChar(50)
-  serviceId   String  @db.VarChar(50)
-  count       Int     @default(1)
-  description String?
+  id        String @id @db.VarChar(50)
+  packageId String @db.VarChar(50)
+  serviceId String @db.VarChar(50)
+  count     Int    @default(1)
 
   package Package @relation(fields: [packageId], references: [id], onDelete: Cascade)
   service Service @relation(fields: [serviceId], references: [id], onDelete: Cascade)
