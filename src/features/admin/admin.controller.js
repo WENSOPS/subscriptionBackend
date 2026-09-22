@@ -9,6 +9,13 @@ import {
 } from "../../utils/response.js";
 
 // Helper to parse services string during package import
+function normalizeOptionalField(val) {
+  if (val == null) return null;
+  const s = String(val).trim();
+  if (!s || s.toLowerCase() === "null") return null;
+  return s;
+}
+
 function parseServicesString(str) {
   if (!str) return [];
   if (typeof str !== "string") {
@@ -147,8 +154,9 @@ export const importData = async (req, res) => {
             : row.IsActive !== undefined
               ? row.IsActive
               : true;
-        const thumbnailUrlKey =
-          row.thumbnailUrlKey || row.ThumbnailUrlKey || null;
+        const thumbnailUrlKey = normalizeOptionalField(
+          row.thumbnailUrlKey ?? row.ThumbnailUrlKey,
+        );
 
         if (!title || typeof title !== "string" || !title.trim()) {
           return badRequest(
@@ -179,9 +187,7 @@ export const importData = async (req, res) => {
           description: description ? String(description).trim() : null,
           price,
           isActive,
-          thumbnailUrlKey: thumbnailUrlKey
-            ? String(thumbnailUrlKey).trim()
-            : null,
+          thumbnailUrlKey,
         });
       }
 
@@ -198,6 +204,7 @@ export const importData = async (req, res) => {
               thumbnailUrlKey: item.thumbnailUrlKey,
             },
             create: {
+              id: generateId.svc(),
               title: item.title,
               description: item.description,
               price: item.price,
@@ -320,8 +327,18 @@ export const importData = async (req, res) => {
         }
 
         const trips = tripsVal !== null ? parseInt(tripsVal, 10) : null;
-        const validity =
-          validityVal !== null ? parseInt(validityVal, 10) : null;
+
+        let validity = null;
+        const validityNormalized = normalizeOptionalField(validityVal);
+        if (validityNormalized !== null) {
+          validity = parseInt(validityNormalized, 10);
+          if (isNaN(validity)) {
+            return badRequest(
+              res,
+              `Validation error at row ${rowNum}: Validity must be a number or left empty.`,
+            );
+          }
+        }
 
         if (trips !== null && (isNaN(trips) || trips < 0)) {
           return badRequest(
@@ -329,10 +346,10 @@ export const importData = async (req, res) => {
             `Validation error at row ${rowNum}: Trips must be a positive integer.`,
           );
         }
-        if (validity !== null && (isNaN(validity) || validity < 0)) {
+        if (validity !== null && validity < 0) {
           return badRequest(
             res,
-            `Validation error at row ${rowNum}: Validity must be a positive integer.`,
+            `Validation error at row ${rowNum}: Validity cannot be negative.`,
           );
         }
 
@@ -462,7 +479,7 @@ export const importData = async (req, res) => {
           } else {
             pkg = await tx.package.create({
               data: {
-                id: generateId.package(),
+                id: generateId.pkg(),
                 name: item.name,
                 description: item.description,
                 regularPrice: item.regularPrice,

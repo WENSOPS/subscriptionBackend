@@ -4,8 +4,10 @@ import { randomUUID } from "crypto";
 export const ID_PREFIX = {
   USER: "USER_",
   SERVICE: "SERV_",
+  SVC: "SVC_",
   OFFERS: "OFRS_",
   PACKAGE: "PACK_",
+  PKG: "PKG_",
   PACKAGE_MEDIA: "PMED_",
   PACKAGE_SERVICE: "PSVC_",
   COUPON: "COUP_",
@@ -31,8 +33,10 @@ export function generatePrefixedId(prefix) {
 export const generateId = {
   user: () => generatePrefixedId(ID_PREFIX.USER),
   service: () => generatePrefixedId(ID_PREFIX.SERVICE),
+  svc: () => generatePrefixedId(ID_PREFIX.SVC),
   offers: () => generatePrefixedId(ID_PREFIX.OFFERS),
   package: () => generatePrefixedId(ID_PREFIX.PACKAGE),
+  pkg: () => generatePrefixedId(ID_PREFIX.PKG),
   packageMedia: () => generatePrefixedId(ID_PREFIX.PACKAGE_MEDIA),
   packageService: () => generatePrefixedId(ID_PREFIX.PACKAGE_SERVICE),
   coupon: () => generatePrefixedId(ID_PREFIX.COUPON),
