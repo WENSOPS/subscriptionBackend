@@ -91,7 +91,7 @@ model Package {
   offers          Offer[]
   orders          Order[]
   subscriptions   Subscription[]
-  sequence        Int
+  sequence        Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
