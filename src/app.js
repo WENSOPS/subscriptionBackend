@@ -15,6 +15,7 @@ import adminRoutes from "./features/admin/admin.routes.js";
 import referralRoutes from "./features/referral/referral.route.js";
 import expoRoutes from "./features/expo/expo.routes.js";
 import capiRoutes from "./features/capi/capi.route.js";
+import scheduleRoutes from "./features/schedule/schedule.route.js";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 
@@ -60,6 +61,7 @@ app.use("/api/v1/admin", adminRoutes);
 app.use("/api/v1/referral", referralRoutes);
 app.use("/api/v1/expo", expoRoutes);
 app.use("/api/v1/capi", capiRoutes);
+app.use("/api/v1/schedule", scheduleRoutes);
 app.get("/api/v1/health", (req, res) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });

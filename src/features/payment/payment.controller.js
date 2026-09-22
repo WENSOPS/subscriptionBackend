@@ -21,6 +21,7 @@ import {
   sendWhatsAppTemplateToBroadcast,
 } from "../../utils/whatsapp-notification.js";
 import { generateAndSendOrderInvoice } from "../../services/invoice.service.js";
+import { trackPurchase } from "../capi/capi.service.js";
 import { getExchangeRate, getExchangeRates, isSupportedCurrency } from "../../services/exchangeRate.service.js";
 import {
   convertINRToForeign,
@@ -410,12 +411,14 @@ export const handleWebhook = async (req, res) => {
             status: true,
             amount: true,
             finalAmount: true,
+            currency: true,
             packageId: true,
+            packageName: true,
             userId: true,
             appliedReferralRewardId: true,
             referralDiscountAmount: true,
             user: {
-              select: { name: true, mobileNumber: true }
+              select: { name: true, mobileNumber: true, email: true }
             }
           },
         });
@@ -424,8 +427,38 @@ export const handleWebhook = async (req, res) => {
           return notFound(res, "Order not found");
         }
 
-        // Already processed, nothing to do
+        const firePurchaseCapi = () => {
+          const nameParts = (existingOrder.user?.name || "")
+            .trim()
+            .split(/\s+/)
+            .filter(Boolean);
+          trackPurchase({
+            id: existingOrder.id,
+            amount:
+              event.data?.payment?.payment_amount ??
+              existingOrder.finalAmount ??
+              existingOrder.amount,
+            currency:
+              event.data?.order?.order_currency ||
+              existingOrder.currency ||
+              "INR",
+            cashfreeOrderId,
+            packageName: existingOrder.packageName,
+            packageId: existingOrder.packageId,
+            email: existingOrder.user?.email,
+            phone: existingOrder.user?.mobileNumber,
+            name: existingOrder.user?.name,
+            firstName: nameParts[0] || "",
+            lastName: nameParts.slice(1).join(" ") || "",
+            userId: existingOrder.userId,
+          }).catch((err) =>
+            console.error("[webhook] CAPI Purchase failed:", err?.message || err),
+          );
+        };
+
+        // Already processed — still send Purchase with the same eventId for Meta dedup
         if (existingOrder.status === "PAID") {
+          firePurchaseCapi();
           return ok(res, { success: true });
         }
 
@@ -479,6 +512,8 @@ export const handleWebhook = async (req, res) => {
         } catch (invoiceErr) {
           console.error("[webhook] Error generating invoice:", invoiceErr);
         }
+
+        firePurchaseCapi();
 
       } catch (error) {
         console.error("[webhook] Error during PAYMENT_SUCCESS handling:", error);
