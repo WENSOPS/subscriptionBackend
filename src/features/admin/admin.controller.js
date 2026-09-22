@@ -191,27 +191,36 @@ export const importData = async (req, res) => {
         });
       }
 
-      // Merge / Save into Database
+      // Merge / Save into Database (title is not unique — match title + description + price)
       const results = [];
       await prisma.$transaction(async (tx) => {
         for (const item of servicesToUpsert) {
-          const service = await tx.service.upsert({
-            where: { title: item.title },
-            update: {
-              description: item.description,
-              price: item.price,
-              isActive: item.isActive,
-              thumbnailUrlKey: item.thumbnailUrlKey,
-            },
-            create: {
-              id: generateId.svc(),
+          const existing = await tx.service.findFirst({
+            where: {
               title: item.title,
               description: item.description,
               price: item.price,
-              isActive: item.isActive,
-              thumbnailUrlKey: item.thumbnailUrlKey,
             },
           });
+
+          const service = existing
+            ? await tx.service.update({
+                where: { id: existing.id },
+                data: {
+                  isActive: item.isActive,
+                  thumbnailUrlKey: item.thumbnailUrlKey,
+                },
+              })
+            : await tx.service.create({
+                data: {
+                  id: generateId.svc(),
+                  title: item.title,
+                  description: item.description,
+                  price: item.price,
+                  isActive: item.isActive,
+                  thumbnailUrlKey: item.thumbnailUrlKey,
+                },
+              });
           results.push(service);
         }
       });
@@ -406,7 +415,7 @@ export const importData = async (req, res) => {
           // Resolve / create service associations inside the transaction
           const resolvedServices = [];
           for (const s of item.parsedServices) {
-            let dbService = await tx.service.findUnique({
+            let dbService = await tx.service.findFirst({
               where: { title: s.title },
             });
             if (!dbService) {
