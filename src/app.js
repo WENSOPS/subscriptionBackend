@@ -28,7 +28,7 @@ app.use(cookieParser());
 // );
 
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001', '*'],   // ✅ exact frontend origin, no trailing slash
+  origin: ['https://subscription.wensforce.com'],   // ✅ exact frontend origin, no trailing slash
   credentials: true,                  // ✅ allow cookies/auth headers
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
