@@ -55,3 +55,35 @@ export const loginLeadService = async (payload) => {
 
   return response.data;
 };
+
+export const bookingLeadService = async (payload) => {
+  const url = process.env.LOGIN_LEAD_API_URL;
+  if (!url) {
+    throw new Error("LOGIN_LEAD_API_URL is not configured");
+  }
+
+  const response = await axios.post(url, payload, {
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  return response.data;
+};
+
+export const whatsappEnquiryService = async (payload) => {
+  // save whatsapp enquiry refrance into database with reference id
+
+  const url = process.env.WHATSAPP_ENQUIRY_API_URL;
+  if (!url) {
+    throw new Error("WHATSAPP_ENQUIRY_API_URL is not configured");
+  }
+
+  const response = await axios.post(url, payload, {
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  return response.data;
+};

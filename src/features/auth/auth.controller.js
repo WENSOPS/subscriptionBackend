@@ -143,7 +143,12 @@ export const verifyOtp = async (req, res) => {
     // 3. Delete OTP from Redis BEFORE DB transaction (prevent reuse)
     await deleteKey(`otp:${mobileNumber}`);
 
-    // 4. Upsert user — atomic by itself, no transaction needed
+    // 4. Check if user already exists, then upsert
+    const existingUser = await prisma.user.findUnique({
+      where: { mobileNumber },
+    });
+    const isNewUser = !existingUser;
+
     const user = await prisma.user.upsert({
       where: { mobileNumber },
       update: {},
@@ -187,6 +192,7 @@ export const verifyOtp = async (req, res) => {
         accessToken,
         refreshToken,
         user: updatedUser,
+        isNewUser,
       },
       "OTP verified successfully",
     );

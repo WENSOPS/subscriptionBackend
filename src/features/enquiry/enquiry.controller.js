@@ -1,5 +1,10 @@
 import { ok, badRequest, internalError } from "../../utils/response.js";
-import { forwardEnquiry, loginLeadService } from "./enquiry.service.js";
+import {
+  forwardEnquiry,
+  loginLeadService,
+  bookingLeadService,
+  whatsappEnquiryService,
+} from "./enquiry.service.js";
 
 export const takeEnquiry = async (req, res) => {
   try {
@@ -51,12 +56,11 @@ export const takeEnquiry = async (req, res) => {
 
 export const loginLead = async (req, res) => {
   try {
-    const { phone, email } = req.body;
-    const payload = {
-      phone: phone ?? null,
-      email: email ?? null,
-    };
-    const data = await loginLeadService(payload);
+    if (!req.body.phone) {
+      return badRequest(res, "Phone is required");
+    }
+
+    const data = await loginLeadService(req.body);
     return ok(res, data, "Lead logged successfully");
   } catch (error) {
     console.error(
@@ -64,5 +68,34 @@ export const loginLead = async (req, res) => {
       error?.response?.data || error.message,
     );
     return internalError(res, "Failed to log lead");
+  }
+};
+
+export const bookingLead = async (req, res) => {
+  try {
+    const data = await bookingLeadService(req.body);
+    return ok(res, data, "Booking lead successfully");
+  } catch (error) {
+    console.error(
+      "Error booking lead:",
+      error?.response?.data || error.message,
+    );
+    return internalError(res, "Failed to book lead");
+  }
+};
+
+export const whatsappEnquiry = async (req, res) => {
+  try {
+    if (!req.body?.referenceId) {
+      return badRequest(res, "Reference ID is required");
+    }
+    const data = await whatsappEnquiryService(req.body);
+    return ok(res, data, "Whatsapp enquiry successfully");
+  } catch (error) {
+    console.log(
+      "Error whatsapp enquiry:",
+      error?.response?.data || error.message,
+    );
+    return internalError(res, "Failed to whatsapp enquiry");
   }
 };
