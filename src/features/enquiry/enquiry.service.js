@@ -9,11 +9,14 @@ export const forwardEnquiry = async (payload) => {
 
   const summary = await generateSummary(payload);
 
-  const response = await axios.post(url, {...payload, summary }, {
+  const response = await axios.post(
+    url,
+    { ...payload, summary },
+    {
       headers: {
         "Content-Type": "application/json",
       },
-    }
+    },
   );
 
   return response.data;
@@ -36,4 +39,19 @@ export const generateSummary = async (payload) => {
   `;
 
   return summary;
+};
+
+export const loginLeadService = async (payload) => {
+  const url = process.env.LOGIN_LEAD_API_URL;
+  if (!url) {
+    throw new Error("LOGIN_LEAD_API_URL is not configured");
+  }
+
+  const response = await axios.post(url, payload, {
+    headers: {
+      "Content-Type": "application/json",
+    },
+  });
+
+  return response.data;
 };

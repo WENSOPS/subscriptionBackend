@@ -6,5 +6,5 @@ const router = Router();
 
 // Public — no auth
 router.post("/", takeEnquiryValidation, enquiryController.takeEnquiry);
-
+router.post("/login-lead", enquiryController.loginLead);
 export default router;
